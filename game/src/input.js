@@ -1,5 +1,7 @@
 // Keyboard + mouse input, polled by the game loop. Keys are tracked by
 // `code` so WASD and arrows both work, and clicks are edge-triggered.
+// Revision 2: the most recent key is remembered (lastPressed) so the HUD
+// and debug hooks can tell what the player just did.
 
 export class Input {
   constructor() {
@@ -7,8 +9,10 @@ export class Input {
     this.clicked = false;       // true for exactly one frame after a click
     this.mouseX = 0;
     this.mouseY = 0;
+    this.lastCode = null; // revision 2: most recent key pressed
     this._onKeyDown = (e) => {
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+      this.lastCode = e.code;
       this.keys.add(e.code);
       // Single-press actions are read through `pressed` below.
       this._pressed.add(e.code);
@@ -26,6 +30,7 @@ export class Input {
   }
 
   down(code) { return this.keys.has(code); }
+  lastPressed() { return this.lastCode; }
   any(...codes) { return codes.some((c) => this.keys.has(c)); }
 
   // Edge-triggered: true once, then cleared by endFrame().

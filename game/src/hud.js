@@ -1,6 +1,8 @@
 // The HUD: DOM overlays (health, cash, ammo, speed, clock, wanted stars,
 // objective, station) plus a live minimap canvas, plus the four screens
 // (title, pause, dead, story complete) and toast messages.
+// Revision 2: the objective tracker now shows the mission step (e.g.
+// "Mission 3/8") with a thin progress bar under the objective text.
 
 export class Hud {
   constructor() {
@@ -28,6 +30,10 @@ export class Hud {
     this.starsEl = this._el('div', 'stat stars', top);
 
     this.objectiveEl = this._el('div', 'objective', this.root);
+    this.objectiveTextEl = this._el('div', 'objective-text', this.objectiveEl);
+    this.objectiveStepEl = this._el('div', 'objective-step', this.objectiveEl);
+    this.objectiveBarEl = this._el('div', 'objective-bar', this.objectiveEl);
+    this.objectiveBarFill = this._el('div', 'fill', this.objectiveBarEl);
     this.stationEl = this._el('div', 'station', this.root);
     this.toastEl = this._el('div', 'toasts', this.root);
     this.helpEl = this._el('div', 'help', this.root);
@@ -60,7 +66,14 @@ export class Hud {
   }
 
   update(state) {
-    // state: { health, cash, ammo, speedKmh, stars, objective, station, time }
+    // state: { health, cash, ammo, speedKmh, stars, objective, station, time,
+    //          missionIndex, missionTotal } — revision 2 adds the step tracker.
+    const total = state.missionTotal || 8;
+    const step = Math.min((state.missionIndex || 0) + 1, total);
+    this.objectiveStepEl.textContent = state.missionIndex >= total
+      ? 'Story complete'
+      : `Mission ${step}/${total}`;
+    this.objectiveBarFill.style.width = `${Math.round(((state.missionIndex || 0) / total) * 100)}%`;
     this.healthFill.style.width = `${Math.max(0, state.health)}%`;
     this.healthFill.style.background = state.health > 50 ? '#2ecc71' : state.health > 25 ? '#f39c12' : '#e74c3c';
     this.cashEl.textContent = `$${state.cash.toLocaleString()}`;
@@ -71,7 +84,7 @@ export class Hud {
     this.clockEl.textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
     this.starsEl.textContent = '★'.repeat(state.stars) + '☆'.repeat(5 - state.stars);
     this.starsEl.style.color = state.stars > 0 ? '#ffdd33' : '#888';
-    this.objectiveEl.textContent = state.objective;
+    this.objectiveTextEl.textContent = state.objective;
     this.stationEl.textContent = state.station;
     this._clock = state.time;
   }

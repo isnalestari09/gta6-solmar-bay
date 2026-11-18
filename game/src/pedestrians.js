@@ -1,5 +1,7 @@
 // Pedestrians: 26 walkers who stroll the sidewalks and scatter when a car
 // or a gunshot comes near. A few of them are taxi riders during mission 3.
+// Revision 2: at intersections they wait at the kerb, then cross straight
+// across the road instead of wandering through traffic.
 
 import * as THREE from 'three';
 import { mulberry32, pick } from './config.js';
@@ -14,18 +16,43 @@ export class Pedestrian {
     this.speed = 1.2 + rng() * 1.4;
     this.fleeing = 0;      // seconds left of fleeing
     this.isRider = false;
+    this._crossWait = 0;     // seconds left waiting at a kerb (revision 2)
+    this._crossing = false;  // mid-crossing: hold a straight heading
     this.mesh.position.copy(this.pos);
   }
 
   update(dt, city, danger) {
-    if (danger) this.fleeing = 1.5;
+    if (danger) { this.fleeing = 1.5; this._crossing = false; this._crossWait = 0; }
+    // Crossing behaviour: at an intersection, wait at the kerb, then walk
+    // straight across instead of turning at random mid-road.
+    if (this.fleeing <= 0 && !this._crossing && city.atIntersection(this.pos.x, this.pos.z)) {
+      if (this._crossWait <= 0) this._crossWait = 0.6 + Math.random() * 1.2;
+      this._crossWait -= dt;
+      if (this._crossWait <= 0) {
+        this._crossing = true;
+        // Cross along the nearer road axis, in a straight line.
+        const alongX = Math.abs(((this.pos.x + 30) % 60) - 30) < Math.abs(((this.pos.z + 30) % 60) - 30);
+        this.angle = alongX ? (Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2) : (Math.random() < 0.5 ? 0 : Math.PI);
+      } else {
+        // Waiting at the kerb: stand still.
+        this.mesh.position.copy(this.pos);
+        this.mesh.rotation.y = this.angle;
+        return;
+      }
+    } else if (this._crossing && !city.onRoad(this.pos.x, this.pos.z)) {
+      this._crossing = false; // made it across; resume wandering
+    }
     if (this.fleeing > 0) {
       this.fleeing -= dt;
-      // Run away from the danger point.
-      const dx = this.pos.x - danger.x;
-      const dz = this.pos.z - danger.z;
-      const d = Math.hypot(dx, dz) || 1;
-      this.angle = Math.atan2(dx / d, dz / d);
+      // Run away from the danger point. If there is no danger point (the
+      // ped was scattered earlier and the threat has moved on), keep running
+      // on the current heading instead of crashing on a null danger point.
+      if (danger) {
+        const dx = this.pos.x - danger.x;
+        const dz = this.pos.z - danger.z;
+        const d = Math.hypot(dx, dz) || 1;
+        this.angle = Math.atan2(dx / d, dz / d);
+      }
       this.pos.x += Math.sin(this.angle) * 5.5 * dt;
       this.pos.z += Math.cos(this.angle) * 5.5 * dt;
     } else {

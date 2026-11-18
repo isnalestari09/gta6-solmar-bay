@@ -1,4 +1,4 @@
-// The story: seven missions, one at a time, each with a gold beacon in the
+// The story: eight missions, one at a time, each with a gold beacon in the
 // world and a HUD objective. Completing one pays out, autosaves, and starts
 // the next. The finale ends the story.
 
@@ -18,6 +18,7 @@ export class MissionManager {
     this.coinsNeeded = 0;
     this.coinsFound = 0;
     this.escapeArmed = false;
+    this.failedCount = 0;  // revision 2: how many times the current run failed
     this._beacon = this._makeBeacon();
     scene.add(this._beacon);
     this._fareMarkers = [];
@@ -118,6 +119,23 @@ export class MissionManager {
     } else if (m.kind === 'coins') {
       if (this.coinsFound >= this.coinsNeeded) this._complete();
     }
+  }
+
+  // Revision 2 — fail / retry: failing a mission never costs cash.
+  // `fail()` records the failure and tells the HUD; `retry()` restarts the
+  // same mission from its start, with every dollar already earned kept.
+  fail() {
+    const m = this.current;
+    if (!m || this.done) return;
+    this.failedCount++;
+    this.onEvent('mission-failed', { mission: m, failedCount: this.failedCount });
+  }
+
+  retry() {
+    const m = this.current;
+    if (!m || this.done) return;
+    this.startMission(this.index); // same mission again, cash untouched
+    this.onEvent('mission-retry', { mission: m });
   }
 
   // The coin system reports each pickup here.

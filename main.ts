@@ -1,5 +1,7 @@
 // Solmar Bay — make.fun gta6-01 entry program (Node 22, standard library
-// only). Copies game/ and screenshots/ beside this file to /output and
+// only). Revision 2 (recorded session): game, screenshots and dossier
+// rebuilt after the second revision pass — 8 missions, second plaza,
+// heat decay, save v2. Copies game/ and screenshots/ beside this file to /output and
 // writes /output/dossier.json with the vendored make.fun library.
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts

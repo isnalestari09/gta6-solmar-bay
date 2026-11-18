@@ -1,6 +1,8 @@
 // The wanted system: 0–5 stars. Crimes raise it, police chase and ram,
 // and it fades when the player stays out of sight. Police count scales
 // with the star level.
+// Revision 2: heat decays faster while hiding — no police car within 45 m
+// means the trail is going cold (3x the normal fade rate).
 
 export class Wanted {
   constructor(vehicles, audio) {
@@ -11,6 +13,7 @@ export class Wanted {
     this._fadeTimer = 0;
     this._sirenTimer = 0;
     this._chaseTimer = 0;
+    this.hiding = false;   // true while no cop is close (revision 2)
   }
 
   add(amount, reason) {
@@ -46,7 +49,14 @@ export class Wanted {
     if (this.stars === 0) return;
     this._fadeTimer -= dt;
     if (this._fadeTimer <= 0) {
-      this._heat = Math.max(0, this._heat - dt * 2.5);
+      // Hiding: no police car within 45 m, so the heat cools 3x faster.
+      let nearest = Infinity;
+      for (const cop of this.vehicles.police) {
+        nearest = Math.min(nearest, Math.hypot(cop.pos.x - playerPos.x, cop.pos.z - playerPos.z));
+      }
+      this.hiding = nearest > 45;
+      const rate = this.hiding ? 7.5 : 2.5;
+      this._heat = Math.max(0, this._heat - dt * rate);
       this._syncStars();
     }
     this._sirenTimer -= dt;

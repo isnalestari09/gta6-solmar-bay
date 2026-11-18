@@ -1,4 +1,4 @@
-// Staged screenshots: `?shot=start|play|chase|mission&seed=1` puts the game
+// Staged screenshots: `?shot=start|play|chase|mission|plaza&seed=1` puts the game
 // into a fixed, deterministic pose so headless Chrome renders the exact
 // frame the dossier's screenshots show. `applyShot` runs after the game
 // world exists and before the first rendered frame.
@@ -55,6 +55,17 @@ export function applyShot(game, shot) {
       cop.speed = 30;
     });
     g.cameraMode = 'car';
+    return true;
+  }
+  if (shot === 'plaza') {
+    // Revision 2: Dani on foot at the second (north) plaza, its fountain
+    // behind him — the epilogue mission's rendezvous point.
+    g.player.pos.set(90, 0, 104);
+    g.player.angle = Math.PI;
+    g.player.mesh.position.copy(g.player.pos);
+    g.player.mesh.rotation.y = g.player.angle;
+    g.missions.startMission(7); // epilogue: 'One Last Chase'
+    g.cameraMode = 'foot';
     return true;
   }
   if (shot === 'mission') {

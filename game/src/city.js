@@ -23,6 +23,7 @@ export class City {
     this._roads();
     this._buildings();
     this._plaza();
+    this._plaza2(); // revision 2: second plaza in the north-east
     this._beach();
     this._palms();
     this._coins();
@@ -108,6 +109,7 @@ export class City {
     for (let bx = -150; bx <= 150; bx += WORLD.roadGap) {
       for (let bz = -150; bz <= 150; bz += WORLD.roadGap) {
         if (bx === 0 && bz === 0) continue; // the plaza stays open
+        if (bx === 90 && bz === 90) continue; // the second plaza stays open
         if (bx === 150 && bz === -150) continue; // Coral Kings compound yard
         const w = 22 + this.rng() * 14;
         const d = 22 + this.rng() * 14;
@@ -158,6 +160,42 @@ export class City {
         new THREE.MeshLambertMaterial({ color: 0x7a5a3a }),
       );
       bench.position.set(Math.cos(a) * 16, 0.3, Math.sin(a) * 16);
+      bench.rotation.y = -a;
+      this.group.add(bench);
+    }
+  }
+
+  _plaza2() {
+    // Second plaza (north-east, 90, 90): smaller paving circle, a low
+    // fountain and benches — the epilogue mission's rendezvous point.
+    const paving = new THREE.Mesh(
+      new THREE.CircleGeometry(18, 28),
+      new THREE.MeshLambertMaterial({ color: 0xc2b184 }),
+    );
+    paving.rotation.x = -Math.PI / 2;
+    paving.position.set(90, 0.03, 90);
+    this.group.add(paving);
+    const basin = new THREE.Mesh(
+      new THREE.CylinderGeometry(3.5, 4, 1, 20),
+      new THREE.MeshLambertMaterial({ color: 0x9aa5a8 }),
+    );
+    basin.position.set(90, 0.5, 90);
+    this.group.add(basin);
+    const water = new THREE.Mesh(
+      new THREE.CircleGeometry(3, 20),
+      new THREE.MeshLambertMaterial({ color: 0x4fb3d8 }),
+    );
+    water.rotation.x = -Math.PI / 2;
+    water.position.set(90, 1.05, 90);
+    this.group.add(water);
+    this.colliders.push({ minX: 86, maxX: 94, minZ: 86, maxZ: 94 });
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      const bench = new THREE.Mesh(
+        new THREE.BoxGeometry(3.4, 0.6, 1.1),
+        new THREE.MeshLambertMaterial({ color: 0x7a5a3a }),
+      );
+      bench.position.set(90 + Math.cos(a) * 11, 0.3, 90 + Math.sin(a) * 11);
       bench.rotation.y = -a;
       this.group.add(bench);
     }
@@ -214,6 +252,9 @@ export class City {
     ];
     for (const [x, z] of spots) this.coinSpots.push({ x, z });
     // Parked cars line the roads; traffic lanes are separate.
+    // Revision 2: two extra cars parked by the second plaza (28 total).
+    this.parkedSpots.push({ x: 78, z: 97, angle: Math.PI / 2 });
+    this.parkedSpots.push({ x: 102, z: 83, angle: -Math.PI / 2 });
     for (let i = 0; i < 26; i++) {
       const alongRoad = (i % 2 === 0);
       const lane = -180 + Math.floor(i / 2) * 30;
@@ -267,6 +308,13 @@ export class City {
     pos.x = Math.max(-WORLD.wall, Math.min(WORLD.wall, pos.x));
     pos.z = Math.max(-WORLD.wall, Math.min(WORLD.wall, pos.z));
     return hit;
+  }
+
+  // Is a point at a road intersection (both axes on a road)? Pedestrians
+  // use this to wait at the kerb, then cross straight.
+  atIntersection(x, z) {
+    const near = (v) => Math.abs(((v + 30) % WORLD.roadGap) - 30) < WORLD.roadWidth / 2 + 2;
+    return near(x) && near(z);
   }
 
   // Is a point on a road (used to keep traffic on the asphalt)?

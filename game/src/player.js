@@ -1,5 +1,6 @@
 // Dani Reyes on foot: third-person movement, punching, shooting, and
 // picking up sunset coins. When he is in a car, the car drives instead.
+// Revision 2: holding Shift sprints on foot (run speed instead of walk).
 
 import * as THREE from 'three';
 import { PLAYER } from './config.js';
@@ -55,8 +56,9 @@ export class Player {
   }
 
   // On-foot step. Returns a hit when the player bumped into a wall.
-  walk(dt, axes, city) {
-    const speed = PLAYER.walkSpeed;
+  // `sprint` (Shift) runs at PLAYER.runSpeed instead of walking.
+  walk(dt, axes, city, sprint = false) {
+    const speed = sprint ? PLAYER.runSpeed : PLAYER.walkSpeed;
     // Movement is relative to the camera heading (behind the player).
     const forwardX = Math.sin(this.angle);
     const forwardZ = Math.cos(this.angle);

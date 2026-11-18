@@ -1,6 +1,8 @@
 // Solmar Bay — entry point. Wires the world together: renderer, camera,
 // lights, city, cars, pedestrians, wanted system, missions, HUD, save and
 // the fixed-step game loop. The game runs offline from static files only.
+// Revision 2: camera shake on collisions, mission-fail recording on death,
+// Shift sprint on foot, the new coin-pickup SFX, and HUD mission progress.
 
 import * as THREE from 'three';
 import { WORLD, PLAYER, ECONOMY, MISSIONS, RADIO_STATIONS } from './config.js';
@@ -33,6 +35,7 @@ export class Game {
     this._hitCooldown = 0;
     this._punchCooldown = 0;
     this._shotCooldown = 0;
+    this._shake = 0; // revision 2: camera-shake magnitude, decays each frame
 
     this._renderer();
     this._lights();
@@ -124,6 +127,7 @@ export class Game {
   }
 
   die() {
+    this.missions.fail(); // revision 2: record the failure; cash is kept
     this.state = 'dead';
     this.hud.showScreen('dead', 'WASTED',
       'Dani went down in Solmar Bay. The Coral Kings keep Lila — for now.',
@@ -146,6 +150,10 @@ export class Game {
       this._autosave();
     } else if (type === 'mission-complete') {
       this.hud.toast(`Mission complete: ${payload.mission.name}`);
+    } else if (type === 'mission-failed') {
+      this.hud.toast(`Mission failed: ${payload.mission.name} — cash kept, press N to retry it.`);
+    } else if (type === 'mission-retry') {
+      this.hud.toast(`Retrying: ${payload.mission.name}`);
     } else if (type === 'story-complete') {
       this.completeStory();
     } else if (type === 'save') {
@@ -197,7 +205,13 @@ export class Game {
       this.hud.toast(`Radio: ${RADIO_STATIONS[s].name}`);
     }
     if (inp.pressed('KeyN')) {
-      this.hud.toast(this.missions.current ? 'Mission already running — follow the gold beacon.' : 'Story complete.');
+      // Revision 2: N retries the current mission after a failure; otherwise
+      // it just points at the beacon. Cash is never reset by a retry.
+      if (this.missions.failedCount > 0 && this.missions.current) {
+        this.missions.retry();
+      } else {
+        this.hud.toast(this.missions.current ? 'Mission already running — follow the gold beacon.' : 'Story complete.');
+      }
     }
     if (inp.pressed('KeyR') && (this.state === 'dead' || this.state === 'complete')) {
       window.location.reload();
@@ -231,6 +245,7 @@ export class Game {
     const focus = player.inCar ? player.inCar.pos : player.pos;
     const ram = this.wanted.update(dt, focus, !!player.inCar, this.city);
     if (ram && ram.rammed) {
+      this._shake = 0.5; // revision 2: camera shake on a police ram
       if (player.takeDamage(ram.damage)) { this.die(); return; }
       this.radio.crash();
       this.hud.toast('Police rammed you!');
@@ -252,7 +267,8 @@ export class Game {
   _updateOnFoot(dt) {
     const player = this.player;
     const axes = this.input.moveAxes();
-    player.walk(dt, axes, this.city);
+    // Revision 2: hold Shift (either side) to sprint on foot.
+    player.walk(dt, axes, this.city, this.input.down('ShiftLeft') || this.input.down('ShiftRight'));
 
     // Punch (F): nearest pedestrian in front takes damage and flees.
     if (this.input.pressed('KeyF') && this._punchCooldown <= 0) {
@@ -297,6 +313,7 @@ export class Game {
     const hitWall = car.drive(dt, -axes.strafe, axes.forward, this.city);
     if (hitWall && Math.abs(car.speed) > 12 && this._hitCooldown <= 0) {
       this._hitCooldown = 0.8;
+      this._shake = 0.6; // revision 2: camera shake on a hard crash
       this.radio.crash();
       if (player.takeDamage(4)) { this.die(); return; }
     }
@@ -327,7 +344,7 @@ export class Game {
         this.coinsCollected.add(i);
         mesh.visible = false;
         this.cash += ECONOMY.coinValue;
-        this.radio.coin();
+        this.radio.coinPickup(); // revision 2: dedicated coin-pickup SFX
         this.hud.toast(`Sunset coin! +$${ECONOMY.coinValue}`);
         this.missions.onCoin();
         this._autosave();
@@ -368,6 +385,13 @@ export class Game {
     this._camLook.lerp(new THREE.Vector3(focus.x, 1.5, focus.z), 1 - Math.pow(0.0001, dt));
     this.camera.position.copy(this._camPos);
     this.camera.lookAt(this._camLook);
+    // Revision 2: camera shake — a decaying random offset applied after the
+    // camera is placed, so the jolt is visible on the rendered frame.
+    if (this._shake > 0.001) {
+      this.camera.position.x += (Math.random() - 0.5) * this._shake;
+      this.camera.position.y += (Math.random() - 0.5) * this._shake * 0.6;
+      this._shake *= Math.pow(0.02, dt);
+    }
   }
 
   _updateHud() {
@@ -382,6 +406,8 @@ export class Game {
       objective: this.missions.objective,
       station: `♪ ${RADIO_STATIONS[this.radio.station].name}`,
       time: this.clock,
+      missionIndex: this.missions.index,
+      missionTotal: MISSIONS.length,
     });
     this.hud.drawMinimap(
       player.inCar ? player.inCar.pos : player.pos,

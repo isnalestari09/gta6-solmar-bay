@@ -48,8 +48,10 @@ export function pick(rng, arr) {
   return arr[Math.floor(rng() * arr.length)];
 }
 
-// The seven story missions. `target` is a world position; `kind` tells the
+// The eight story missions. `target` is a world position; `kind` tells the
 // mission system what counts as progress.
+// Revision 2: mission 8 is the epilogue chase; payouts rebalanced (+$25–$100
+// on missions 2–7) so the late game pays better without changing mission 1.
 export const MISSIONS = [
   {
     id: 1, name: 'First Job', pay: 150, kind: 'goto',
@@ -57,34 +59,39 @@ export const MISSIONS = [
     target: [-180, -150], hint: 'Follow the gold beacon to the docks.',
   },
   {
-    id: 2, name: "Lila's Letter", pay: 200, kind: 'goto',
+    id: 2, name: "Lila's Letter", pay: 225, kind: 'goto',
     brief: 'Lila left a letter at the cafe. Walk over and pick it up.',
     target: [90, -60], hint: 'The cafe is on the east side, past the plaza.',
   },
   {
-    id: 3, name: 'Taxi Shift', pay: 350, kind: 'fares',
+    id: 3, name: 'Taxi Shift', pay: 375, kind: 'fares',
     brief: 'Earn cash the honest way: pick up 3 fares around the city.',
     target: [-30, 60], hint: 'Drive to a fare marker, wait for the rider, then drive them home.',
   },
   {
-    id: 4, name: 'The Getaway', pay: 500, kind: 'escape',
+    id: 4, name: 'The Getaway', pay: 550, kind: 'escape',
     brief: 'The Coral Kings tipped off the cops. Lose a 3-star wanted level, then reach the safehouse.',
     target: [180, 150], hint: 'Outrun the police until the stars fade, then go to the safehouse.',
   },
   {
-    id: 5, name: 'Coral Kings Drop', pay: 800, kind: 'goto',
+    id: 5, name: 'Coral Kings Drop', pay: 850, kind: 'goto',
     brief: 'Deliver the package to the warehouse — and keep the cops off your tail.',
     target: [-150, 120], hint: 'The warehouse is in the north-west corner.',
   },
   {
-    id: 6, name: 'Coin Run', pay: 1200, kind: 'coins',
+    id: 6, name: 'Coin Run', pay: 1250, kind: 'coins',
     brief: 'Six sunset coins are hidden around Solmar Bay. Find them all.',
     target: [0, 0], hint: 'Coins glow gold. Check the beach, the plaza and the rooftops\' edges.',
   },
   {
-    id: 7, name: "Buy Lila's Freedom", pay: 2500, kind: 'finale',
+    id: 7, name: "Buy Lila's Freedom", pay: 2600, kind: 'finale',
     brief: 'You have the money. Drive to the Coral Kings compound and buy Lila back.',
     target: [150, -120], hint: 'The compound is in the south-east. Finish this.',
+  },
+  {
+    id: 8, name: 'One Last Chase', pay: 1000, kind: 'escape',
+    brief: 'Lila is free, but the Coral Kings send one last crew. Lose a 3-star wanted level, then reach the north plaza to disappear for good.',
+    target: [90, 90], hint: 'Outrun the crew until the stars fade, then slip away at the north plaza.',
   },
 ];
 
@@ -92,4 +99,5 @@ export const RADIO_STATIONS = [
   { name: 'SOLMAR FM', desc: 'Sunset synth — warm pads and slow arpeggios' },
   { name: 'CORAL BEATS', desc: 'Driving bass — punchy synthwave for the chase' },
   { name: 'PALM RADIO', desc: 'Late-night lo-fi — soft keys and vinyl crackle' },
+  { name: 'BAYWAVE FM', desc: 'Midnight baywave — dreamy pads and slow four-on-the-floor' },
 ];

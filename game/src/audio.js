@@ -1,12 +1,15 @@
 // All sound is synthesized live with WebAudio — no audio files, no network.
-// Three radio stations (Q cycles them) plus one-shot effects. Audio only
+// Four radio stations (Q cycles them) plus one-shot effects. Audio only
 // starts after the first user gesture, as browsers require.
+// Revision 2: BAYWAVE FM joins the dial, and coin pickups get their own
+// bright arpeggio (coinPickup) instead of reusing the two-note coin blip.
 
 const SCALES = {
   // [root, mode] semitone sets, in Hz base 110 (A2).
   solmar: [0, 3, 5, 7, 10, 12, 15],
   coral: [0, 2, 3, 7, 8, 10, 12],
   palm: [0, 2, 4, 7, 9, 12, 14],
+  baywave: [0, 5, 7, 10, 12, 15, 17],
 };
 
 export class Radio {
@@ -56,7 +59,7 @@ export class Radio {
   _startLoop() {
     const tick = () => {
       if (!this.ctx || this.muted) return;
-      const names = ['solmar', 'coral', 'palm'];
+      const names = ['solmar', 'coral', 'palm', 'baywave'];
       const scale = SCALES[names[this.station]];
       const now = this.ctx.currentTime + 0.05;
       const root = this.station === 1 ? 98 : 110;
@@ -81,7 +84,7 @@ export class Radio {
   }
 
   nextStation() {
-    this.station = (this.station + 1) % 3;
+    this.station = (this.station + 1) % 4;
     if (this._timer) { clearInterval(this._timer); this._startLoop(); }
     return this.station;
   }
@@ -109,6 +112,11 @@ export class Radio {
   shoot() { this._blip(880, 0.12, 'square', 0.25, 120); }
   punch() { this._blip(140, 0.1, 'sine', 0.4, 60); }
   coin() { this._blip(1320, 0.09, 'sine', 0.3); setTimeout(() => this._blip(1760, 0.14, 'sine', 0.3), 70); }
+  // Revision 2: a brighter four-note arpeggio for sunset-coin pickups.
+  coinPickup() {
+    const notes = [1318, 1568, 1976, 2637];
+    notes.forEach((f, i) => setTimeout(() => this._blip(f, 0.16, 'triangle', 0.32), i * 65));
+  }
   cash() { this._blip(660, 0.08, 'triangle', 0.3); setTimeout(() => this._blip(990, 0.16, 'triangle', 0.3), 80); }
   crash() { this._blip(90, 0.25, 'sawtooth', 0.35, 40); }
   siren() { this._blip(700, 0.4, 'sine', 0.12, 950); }

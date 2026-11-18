@@ -1,4 +1,5 @@
-// Cars: 26 stealable parked cars, 14 looping traffic cars and the police
+// Cars: 28 stealable parked cars (revision 2 added two by the north plaza),
+// 14 looping traffic cars and the police
 // cars the wanted system spawns. Arcade physics: accelerate, steer, brake,
 // slide along walls instead of freezing.
 
@@ -105,6 +106,9 @@ export class VehicleManager {
       this.traffic.push(car);
     }
   }
+
+  // How many stealable cars are parked in the city right now.
+  countParked() { return this.parked.length; }
 
   nearestParked(pos, maxDist = 5) {
     let best = null; let bestD = maxDist;
