@@ -1,136 +1,144 @@
-// missions.js — the seven-mission story of Solmar Bay. The engine walks each
-// mission's objectives in order, shows a beacon and a compass arrow, pays the
-// reward, and unlocks the next chapter. Side jobs (fares, coins) live here too.
+// The story: seven missions, one at a time, each with a gold beacon in the
+// world and a HUD objective. Completing one pays out, autosaves, and starts
+// the next. The finale ends the story.
 
-import * as THREE from '../vendor/three.module.min.js';
-import { MISSIONS, COIN_SPOTS } from './config.js';
+import * as THREE from 'three';
+import { MISSIONS, ECONOMY } from './config.js';
 
-export function createMissionEngine(scene, onEvent) {
-  const beaconGeo = new THREE.CylinderGeometry(2.2, 2.2, 30, 12, 1, true);
-  const beaconMat = new THREE.MeshBasicMaterial({
-    color: 0xffd166, transparent: true, opacity: 0.55, side: THREE.DoubleSide,
-  });
-  const beacon = new THREE.Mesh(beaconGeo, beaconMat);
-  beacon.visible = false;
-  scene.add(beacon);
-  const markerGeo = new THREE.SphereGeometry(1.1, 12, 8);
-  const markerMat = new THREE.MeshBasicMaterial({ color: 0xffd166 });
-  const marker = new THREE.Mesh(markerGeo, markerMat);
-  marker.visible = false;
-  scene.add(marker);
+export class MissionManager {
+  constructor(scene, city, audio, onEvent) {
+    this.scene = scene;
+    this.city = city;
+    this.audio = audio;
+    this.onEvent = onEvent;   // (type, payload) — cash, save, complete, fail
+    this.index = 0;           // 0-based into MISSIONS
+    this.done = false;
+    this.faresLeft = 0;
+    this.faresDone = 0;
+    this.coinsNeeded = 0;
+    this.coinsFound = 0;
+    this.escapeArmed = false;
+    this._beacon = this._makeBeacon();
+    scene.add(this._beacon);
+    this._fareMarkers = [];
+    this._updateBeacon();
+  }
 
-  const engine = {
-    index: 0,
-    objectiveIndex: 0,
-    kills: 0,
-    active: false,
-    beacon,
-    marker,
-    coins: 0,
-    coinMeshes: [],
-    start() {
-      this.index = 0;
-      this.objectiveIndex = 0;
-      this.kills = 0;
-      this.active = true;
-      this.showObjective();
-      onEvent('mission', `Mission 1 — ${MISSIONS[0].title}: ${MISSIONS[0].brief}`);
-    },
-    get mission() { return MISSIONS[this.index]; },
-    get objective() { return this.mission?.objectives[this.objectiveIndex]; },
-    get done() { return this.index >= MISSIONS.length; },
-    showObjective() {
-      const o = this.objective;
-      if (!o) { beacon.visible = false; marker.visible = false; return; }
-      if (o.x !== undefined && o.z !== undefined) {
-        beacon.position.set(o.x, 15, o.z);
-        marker.position.set(o.x, 1.2, o.z);
-        beacon.visible = true;
-        marker.visible = true;
-      } else {
-        beacon.visible = false;
-        marker.visible = false;
-      }
-      onEvent('objective', o.text);
-    },
-    advance() {
-      this.objectiveIndex += 1;
-      this.kills = 0;
-      if (this.objectiveIndex >= this.mission.objectives.length) {
-        const reward = this.mission.reward;
-        onEvent('paid', `Mission complete: ${this.mission.title} — +$${reward}`);
-        this.index += 1;
-        this.objectiveIndex = 0;
-        if (this.done) {
-          beacon.visible = false;
-          marker.visible = false;
-          onEvent('story', 'STORY COMPLETE — Dani and Lila are free. Solmar Bay is yours now.');
-          return { reward, done: true };
-        }
-        onEvent('mission', `Mission ${this.index + 1} — ${this.mission.title}: ${this.mission.brief}`);
-      }
-      this.showObjective();
-      return { reward: 0, done: false };
-    },
-    /** Check one objective against the world; returns a reward when it completes. */
-    check(state) {
-      if (!this.active || this.done) return 0;
-      const o = this.objective;
-      if (!o) return 0;
-      const px = state.player.x;
-      const pz = state.player.z;
-      let reward = 0;
-      let done = false;
-      if ((o.type === 'goto' || o.type === 'driveTo' || o.type === 'collect' || o.type === 'deliver')
-        && o.x !== undefined) {
-        if (Math.hypot(px - o.x, pz - o.z) < 6) done = true;
-      } else if (o.type === 'steal' && state.player.inCar) {
-        done = true;
-      } else if (o.type === 'eliminate' && this.kills >= (o.count || 1)) {
-        done = true;
-      } else if (o.type === 'escape' && state.wanted.stars === 0) {
-        done = true;
-      }
-      if (done) {
-        const r = this.advance();
-        reward = r.reward || 0;
-        if (r.done) return reward;
-      }
-      return reward;
-    },
-    noteKill() {
-      this.kills += 1;
-      const o = this.objective;
-      if (o?.type === 'eliminate') {
-        onEvent('objective', o.text.replace(/\(\d+\/\d+\)/, `(${this.kills}/${o.count})`));
-      }
-    },
-    /** Scatter the twelve sunset coins; returns the meshes for the main loop. */
-    spawnCoins(scene) {
-      const geo = new THREE.CylinderGeometry(0.9, 0.9, 0.25, 12);
-      const mat = new THREE.MeshBasicMaterial({ color: 0xffd166 });
-      for (const [x, z] of COIN_SPOTS) {
-        const coin = new THREE.Mesh(geo, mat);
-        coin.position.set(x, 1.2, z);
-        coin.rotation.x = Math.PI / 2;
-        scene.add(coin);
-        this.coinMeshes.push({ mesh: coin, x, z, taken: false });
-      }
-    },
-    collectCoins(playerPos) {
-      let got = 0;
-      for (const c of this.coinMeshes) {
-        if (c.taken) continue;
-        if (Math.hypot(playerPos.x - c.x, playerPos.z - c.z) < 2.5) {
-          c.taken = true;
-          c.mesh.visible = false;
-          this.coins += 1;
-          got += 50;
-          onEvent('coin', `Sunset coin ${this.coins}/12 — +$50`);
+  get current() { return MISSIONS[this.index]; }
+  get objective() {
+    const m = this.current;
+    if (!m) return 'Story complete — Solmar Bay is yours, Dani.';
+    if (m.kind === 'fares') return `${m.brief} (${this.faresDone}/3 fares)`;
+    if (m.kind === 'coins') return `${m.brief} (${this.coinsFound}/${this.coinsNeeded} coins)`;
+    return m.brief;
+  }
+
+  _makeBeacon() {
+    const g = new THREE.Group();
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.2, 1.2, 60, 12, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xffd54a, transparent: true, opacity: 0.35, side: THREE.DoubleSide }),
+    );
+    beam.position.y = 30;
+    g.add(beam);
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(3, 0.3, 8, 24),
+      new THREE.MeshBasicMaterial({ color: 0xffd54a }),
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 0.4;
+    g.add(ring);
+    return g;
+  }
+
+  _updateBeacon() {
+    const m = this.current;
+    if (!m) { this._beacon.visible = false; return; }
+    this._beacon.visible = true;
+    this._beacon.position.set(m.target[0], 0, m.target[1]);
+  }
+
+  startMission(i) {
+    this.index = i;
+    const m = this.current;
+    this.faresLeft = m && m.kind === 'fares' ? 3 : 0;
+    this.faresDone = 0;
+    this.coinsNeeded = m && m.kind === 'coins' ? 6 : 0;
+    this.coinsFound = 0;
+    this.escapeArmed = false;
+    this._clearFareMarkers();
+    if (m && m.kind === 'fares') this._spawnFareMarkers();
+    this._updateBeacon();
+  }
+
+  _spawnFareMarkers() {
+    const spots = [[-90, -30], [60, 120], [120, -60]];
+    for (const [x, z] of spots) {
+      const marker = new THREE.Mesh(
+        new THREE.ConeGeometry(1.5, 3, 4),
+        new THREE.MeshBasicMaterial({ color: 0x2ecc71 }),
+      );
+      marker.position.set(x, 2, z);
+      marker.rotation.y = Math.PI / 4;
+      this.scene.add(marker);
+      this._fareMarkers.push({ mesh: marker, x, z, done: false });
+    }
+  }
+
+  _clearFareMarkers() {
+    for (const f of this._fareMarkers) this.scene.remove(f.mesh);
+    this._fareMarkers = [];
+  }
+
+  // Called every frame with the player's position and car state.
+  update(dt, playerPos, inCar, wantedStars) {
+    const m = this.current;
+    if (!m || this.done) return;
+    // Spin the beacon ring.
+    this._beacon.rotation.y += dt;
+    const dist = Math.hypot(playerPos.x - m.target[0], playerPos.z - m.target[1]);
+
+    if (m.kind === 'goto' || m.kind === 'finale') {
+      if (dist < 7) this._complete();
+    } else if (m.kind === 'fares') {
+      for (const f of this._fareMarkers) {
+        if (f.done) continue;
+        const d = Math.hypot(playerPos.x - f.x, playerPos.z - f.z);
+        if (d < 6 && inCar) {
+          f.done = true;
+          this.scene.remove(f.mesh);
+          this.faresDone++;
+          this.onEvent('cash', { amount: ECONOMY.taxiFare, why: 'Taxi fare' });
+          if (this.faresDone >= 3) this._complete();
         }
       }
-      return got;
-    },
-  };
-  return engine;
+    } else if (m.kind === 'escape') {
+      if (wantedStars >= 3) this.escapeArmed = true;
+      if (this.escapeArmed && wantedStars === 0 && dist < 7) this._complete();
+    } else if (m.kind === 'coins') {
+      if (this.coinsFound >= this.coinsNeeded) this._complete();
+    }
+  }
+
+  // The coin system reports each pickup here.
+  onCoin() {
+    const m = this.current;
+    if (m && m.kind === 'coins') this.coinsFound++;
+  }
+
+  _complete() {
+    const m = this.current;
+    this.audio.mission();
+    this.onEvent('cash', { amount: m.pay, why: `Mission ${m.id} complete: ${m.name}` });
+    this.onEvent('mission-complete', { mission: m });
+    if (this.index + 1 >= MISSIONS.length) {
+      this.done = true;
+      this.index = MISSIONS.length;
+      this._beacon.visible = false;
+      this.onEvent('story-complete', {});
+    } else {
+      this.startMission(this.index + 1);
+    }
+    this.onEvent('save', {});
+  }
 }

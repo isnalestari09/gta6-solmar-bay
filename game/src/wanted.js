@@ -1,59 +1,83 @@
-// wanted.js — the wanted system: stars rise with crime, police cars and officers
-// respond, and the heat fades when Dani lays low out of sight.
+// The wanted system: 0–5 stars. Crimes raise it, police chase and ram,
+// and it fades when the player stays out of sight. Police count scales
+// with the star level.
 
-import { WANTED } from './config.js';
-import { makeCar } from './vehicles.js';
+export class Wanted {
+  constructor(vehicles, audio) {
+    this.vehicles = vehicles;
+    this.audio = audio;
+    this.stars = 0;
+    this._heat = 0;        // 0..100, stars = ceil(heat / 20)
+    this._fadeTimer = 0;
+    this._sirenTimer = 0;
+    this._chaseTimer = 0;
+  }
 
-export function createWantedSystem(scene) {
-  return {
-    stars: 0,
-    heat: 0,
-    quietTimer: 0,
-    policeCars: [],
-    policeOfficers: [],
-    scene,
-    /** A crime adds heat; every 30 heat is another star, up to five. */
-    addCrime(amount) {
-      this.heat = Math.min(150, this.heat + amount);
-      const want = Math.min(WANTED.maxStars, Math.floor(this.heat / 30));
-      if (want > this.stars) this.stars = want;
-      this.quietTimer = 0;
-    },
-    /** Spend a quiet stretch to cool down: one star fades, then the next. */
-    update(dt, playerPos, colliders, rng) {
-      if (this.stars > 0) {
-        this.quietTimer += dt;
-        if (this.quietTimer > WANTED.decaySeconds) {
-          this.stars -= 1;
-          this.heat = this.stars * 30;
-          this.quietTimer = 0;
-        }
-      }
-      const wantCars = this.stars * WANTED.policePerStar;
-      while (this.policeCars.length < wantCars) {
-        const a = rng() * Math.PI * 2;
-        const car = makeCar(this.scene,
-          playerPos.x + Math.cos(a) * 60, playerPos.z + Math.sin(a) * 60,
-          a, 0x1b2a4a, 'police');
-        this.policeCars.push(car);
-      }
-      while (this.policeCars.length > wantCars) {
-        const car = this.policeCars.pop();
-        this.scene.remove(car.mesh);
-      }
-      return this.stars;
-    },
-    clear() {
-      this.stars = 0;
-      this.heat = 0;
-      this.quietTimer = 0;
-      for (const car of this.policeCars) this.scene.remove(car.mesh);
-      this.policeCars = [];
-    },
-  };
-}
+  add(amount, reason) {
+    this._heat = Math.min(100, this._heat + amount);
+    this._fadeTimer = 6;   // grace period before fading starts
+    this._syncStars();
+    return reason;
+  }
 
-/** Stars as text, for the HUD and the minimap legend. */
-export function starsText(stars) {
-  return '★'.repeat(stars) + '☆'.repeat(WANTED.maxStars - stars);
+  get level() { return this.stars; }
+
+  _syncStars() {
+    const next = Math.ceil(this._heat / 20);
+    if (next !== this.stars) {
+      this.stars = next;
+      this._matchPolice();
+    }
+  }
+
+  _matchPolice() {
+    const want = this.stars === 0 ? 0 : Math.min(4, this.stars);
+    while (this.vehicles.police.length < want) {
+      const a = Math.random() * Math.PI * 2;
+      this.vehicles.spawnPolice(Math.cos(a) * 60, Math.sin(a) * 60);
+    }
+    while (this.vehicles.police.length > want) {
+      this.vehicles.removePolice(this.vehicles.police[0]);
+    }
+  }
+
+  // Police AI: chase the player, ram, and get stuck less by steering around.
+  update(dt, playerPos, inCar, city) {
+    if (this.stars === 0) return;
+    this._fadeTimer -= dt;
+    if (this._fadeTimer <= 0) {
+      this._heat = Math.max(0, this._heat - dt * 2.5);
+      this._syncStars();
+    }
+    this._sirenTimer -= dt;
+    if (this._sirenTimer <= 0) {
+      this.audio.siren();
+      this._sirenTimer = 3 + Math.random() * 2;
+    }
+    this._chaseTimer += dt;
+    for (const cop of this.vehicles.police) {
+      const dx = playerPos.x - cop.pos.x;
+      const dz = playerPos.z - cop.pos.z;
+      const dist = Math.hypot(dx, dz) || 1;
+      const wantAngle = Math.atan2(dx / dist, dz / dist);
+      let diff = wantAngle - cop.angle;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      const steer = Math.max(-1, Math.min(1, diff * 1.5));
+      const throttle = dist > 6 ? 1 : 0.4;
+      cop.drive(dt, steer, throttle, city);
+      // Ram: slow the player down hard on contact.
+      if (dist < 3.2 && this._chaseTimer > 0.5) {
+        this._chaseTimer = 0;
+        return { rammed: true, damage: 8 };
+      }
+    }
+    return { rammed: false, damage: 0 };
+  }
+
+  clear() {
+    this._heat = 0;
+    this.stars = 0;
+    this._matchPolice();
+  }
 }

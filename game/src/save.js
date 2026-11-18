@@ -1,48 +1,38 @@
-// save.js — Solmar Bay saves: cash, mission progress, coins and bests, kept in
-// localStorage so a run survives a closed tab. Nothing leaves the browser.
+// localStorage save / load. One key, one small JSON object, written on
+// every meaningful change (mission complete, coin collected, cash earned).
 
-import { SAVE_KEY, BEST_KEY } from './config.js';
+const KEY = 'solmar-bay.save.v1';
+
+export function defaultSave() {
+  return {
+    cash: 0,
+    missionIndex: 0,
+    coins: 0,
+    coinsCollected: [],
+    bestScore: 0,
+  };
+}
 
 export function loadSave() {
   try {
-    const raw = window.localStorage.getItem(SAVE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return defaultSave();
+    const data = JSON.parse(raw);
+    return { ...defaultSave(), ...data };
   } catch {
-    return null;
+    return defaultSave();
   }
 }
 
-export function writeSave(save) {
+export function writeSave(data) {
   try {
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+    localStorage.setItem(KEY, JSON.stringify(data));
     return true;
   } catch {
     return false;
   }
 }
 
-export function loadBest() {
-  try {
-    return Number.parseInt(window.localStorage.getItem(BEST_KEY) ?? '0', 10) || 0;
-  } catch {
-    return 0;
-  }
-}
-
-export function writeBest(value) {
-  try {
-    window.localStorage.setItem(BEST_KEY, String(value));
-  } catch {
-    // Private windows: the best score lasts this visit only.
-  }
-}
-
-/** Erase the save and start Dani's story from mission one. */
 export function clearSave() {
-  try {
-    window.localStorage.removeItem(SAVE_KEY);
-  } catch {
-    // Nothing to erase.
-  }
+  try { localStorage.removeItem(KEY); } catch { /* storage unavailable */ }
 }

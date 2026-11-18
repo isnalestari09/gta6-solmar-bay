@@ -1,107 +1,81 @@
-// shots.js — staged screenshot scenes for the entry: each one paints a moment of
-// the game that shows a different system at once, then sets window.__shotReady.
+// Staged screenshots: `?shot=start|play|chase|mission&seed=1` puts the game
+// into a fixed, deterministic pose so headless Chrome renders the exact
+// frame the dossier's screenshots show. `applyShot` runs after the game
+// world exists and before the first rendered frame.
 
-import { hitsCollider, roadLines } from './city.js';
-
-/** Longest clear stretch of road to drive along, so a staged car is on asphalt
- *  (not wedged against a building that juts into the road) when the shot lands. */
-function longestClearRun(colliders) {
-  let best = null;
-  const dirs = [
-    { dx: 0, dz: 1, angle: 0 }, { dx: 0, dz: -1, angle: Math.PI },
-    { dx: 1, dz: 0, angle: Math.PI / 2 }, { dx: -1, dz: 0, angle: -Math.PI / 2 },
-  ];
-  for (const line of roadLines()) {
-    for (const d of dirs) {
-      let runStart = null;
-      let runLen = 0;
-      for (let t = -240; t <= 240; t += 4) {
-        const x = d.dx === 0 ? line : t;
-        const z = d.dz === 0 ? line : t;
-        const clear = !hitsCollider(colliders, x, z, 3);
-        if (clear) {
-          if (runStart === null) { runStart = t; runLen = 0; }
-          runLen += 4;
-          if (!best || runLen > best.len) best = { x, z, angle: d.angle, len: runLen, start: { x: d.dx === 0 ? line : runStart, z: d.dz === 0 ? line : runStart } };
-        } else {
-          runStart = null;
-          runLen = 0;
-        }
-      }
-    }
-  }
-  return best;
+export function parseShot() {
+  const q = new URLSearchParams(window.location.search);
+  return {
+    shot: q.get('shot') || null,
+    seed: Number(q.get('seed') || 1),
+  };
 }
 
-export function stageShot(name, game) {
-  const { player, camera, wanted, missions, traffic, police } = game;
-  if (name === 'start') {
-    // Title screen over the plaza at sunset: the city, the hero, the HUD.
-    game.screen = 'title';
-    player.x = 0; player.z = 24;
-    player.mesh.position.set(0, 0, 24);
-    camera.yaw = 0.5; camera.pitch = 0.22; camera.distance = 22;
-    camera.update({ x: 0, y: 0, z: 24 }, 1);
-  } else if (name === 'drive') {
-    // Dani driving down the avenue, traffic ahead, minimap and speed on the HUD.
-    game.screen = 'playing';
-    game.autoDrive = true;
-    const car = game.parkedCars[0];
-    player.inCar = car;
-    // Put the car at the start of the longest clear stretch of road, facing
-    // along it, so the shot shows the car driving on asphalt with the city ahead.
-    const run = longestClearRun(game.colliders);
-    const start = run ? run.start : { x: 0, z: -120 };
-    const angle = run ? run.angle : 0;
-    car.x = start.x; car.z = start.z; car.angle = angle;
-    car.mesh.position.set(car.x, 0, car.z);
-    car.mesh.rotation.y = car.angle;
-    player.x = car.x; player.z = car.z;
-    car.speed = 22;
-    camera.yaw = angle; camera.pitch = 0.3; camera.distance = 13;
-    camera.update({ x: car.x, y: 0, z: car.z }, 1);
-  } else if (name === 'chase') {
-    // A three-star police chase: sirens, wanted stars, the mission marker ahead.
-    game.screen = 'playing';
-    game.autoDrive = true;
-    wanted.stars = 3;
-    wanted.heat = 90;
-    const car = game.parkedCars[1] || game.parkedCars[0];
-    player.inCar = car;
-    player.x = car.x; player.z = car.z;
-    car.speed = 30;
-    wanted.update(0.1, { x: car.x, z: car.z }, game.colliders, Math.random);
-    // Put the pursuit in frame: two police cars flanking ahead, one closing in behind.
-    const spots = [[-9, 22, 0.2], [10, 26, -0.2], [0, -26, 0]];
-    wanted.policeCars.forEach((p, i) => {
-      const s = spots[i % spots.length];
-      p.x = car.x + s[0];
-      p.z = car.z + s[1];
-      p.angle = s[2];
-      p.mesh.position.set(p.x, 0, p.z);
-      p.mesh.rotation.y = p.angle;
-    });
-    game.hud.setMission('Escape the police — lose 3 stars!');
-    camera.yaw = 0; camera.pitch = 0.3; camera.distance = 16;
-    camera.update({ x: car.x, y: 0, z: car.z }, 1);
-  } else if (name === 'mission') {
-    // On foot at the casino, mission beacon overhead, an enemy ahead, HUD live.
-    game.screen = 'playing';
-    missions.start();
-    missions.index = 5;
-    missions.objectiveIndex = 0;
-    missions.showObjective();
-    player.x = 128; player.z = 52;
-    player.mesh.position.set(128, 0, 52);
-    // Vela's men wait in front of the casino (west side), under the beacon.
-    game.spawnEnemies(140, 52, 2);
-    camera.yaw = Math.PI / 2; camera.pitch = 0.3; camera.distance = 16;
-    camera.update({ x: 128, y: 0, z: 52 }, 1);
+export function applyShot(game, shot) {
+  if (!shot) return false;
+  const g = game;
+  g.startPlaying(); // skip the title screen in shot mode
+  if (shot === 'start') {
+    // Title-screen look: Dani on foot at the plaza, fountain behind him.
+    g.player.pos.set(0, 0, 34);
+    g.player.angle = Math.PI;
+    g.player.mesh.position.copy(g.player.pos);
+    g.showTitleScreen();
+    return true;
   }
-  game.hud.setWanted(wanted.stars);
-  game.hud.setMission(missions.objective ? missions.objective.text : 'Free roam — Solmar Bay');
-  game.hud.setCash(player.cash);
-  game.hud.setHealth(player.health);
-  game.hud.drawMinimap(game.minimapState());
-  window.__shotReady = true;
+  if (shot === 'play') {
+    // Driving fast down the main road towards the plaza fountain.
+    const car = g.vehicles.parked[3] || g.vehicles.parked[0];
+    g.player.pos.set(car.pos.x, 0, car.pos.z);
+    g.player.enterCar(car);
+    car.pos.set(-180, 0, 60);
+    car.angle = Math.PI / 2;
+    car.speed = 28;
+    g.autoDrive = true; // keep the throttle on for the staged photo
+    g.cameraMode = 'car';
+    return true;
+  }
+  if (shot === 'chase') {
+    // Three-star chase at speed: two police cars closing in.
+    const car = g.vehicles.parked[5] || g.vehicles.parked[0];
+    g.player.pos.set(car.pos.x, 0, car.pos.z);
+    g.player.enterCar(car);
+    car.pos.set(-150, 0, 0);
+    car.angle = Math.PI / 2;
+    car.speed = 34;
+    g.autoDrive = true;
+    g.wanted.add(60, 'shot');
+    g.wanted._fadeTimer = 999; // keep the stars up for the photo
+    const cops = g.vehicles.police;
+    const spots = [[30, 6], [-20, -4], [-35, 5]];
+    cops.forEach((cop, i) => {
+      const [dx, dz] = spots[i % spots.length];
+      cop.pos.set(car.pos.x + dx, 0, car.pos.z + dz);
+      cop.angle = Math.PI / 2;
+      cop.speed = 30;
+    });
+    g.cameraMode = 'car';
+    return true;
+  }
+  if (shot === 'mission') {
+    // On foot at the Coral Kings compound, facing two of their men.
+    g.player.pos.set(132, 0, -132);
+    g.player.angle = Math.PI * 0.75;
+    g.player.mesh.position.copy(g.player.pos);
+    g.player.mesh.rotation.y = g.player.angle;
+    const near = g.peds.peds.slice(0, 2);
+    near[0].pos.set(142, 0, -142);
+    near[1].pos.set(138, 0, -146);
+    for (const p of near) {
+      p.mesh.position.copy(p.pos);
+      p.fleeing = 0;
+      p.speed = 0; // hold still for the staged photo
+      p.angle = Math.atan2(g.player.pos.x - p.pos.x, g.player.pos.z - p.pos.z);
+      p.mesh.rotation.y = p.angle;
+    }
+    g.missions.startMission(6); // finale: "Buy Lila's Freedom"
+    g.cameraMode = 'foot';
+    return true;
+  }
+  return false;
 }
