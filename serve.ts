@@ -1,8 +1,8 @@
-// A tiny static server for game/ (Node 22, standard library only): `node
-// serve.ts` serves game/ on http://localhost:8080. It sends the MIME types a
-// browser game needs, refuses any path outside game/, answers HEAD, and
-// sends no-cache headers so a rebuild is never shadowed by a stale file.
-
+// A tiny static server for game/ (Node 22, standard library only), so the
+// entry can be played locally without a build step: `node serve.ts` serves
+// game/ on http://localhost:8080. It sends the MIME types a browser game
+// needs, refuses any path outside game/, and otherwise does nothing clever:
+// this is a development convenience, not a web server for the internet.
 import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
@@ -27,55 +27,40 @@ const MIME = {
   '.webp': 'image/webp',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
-  '.txt': 'text/plain; charset=utf-8',
+  '.woff2': 'font/woff2',
+  '.glb': 'model/gltf-binary',
 };
 
-const server = createServer((request, response) => {
-  const url = new URL(request.url, 'http://localhost');
-  const decoded = decodeURIComponent(url.pathname);
-  const safe = normalize(join(root, decoded)).replace(/\\/g, '/');
-  if (!safe.startsWith(root.replace(/\\/g, '/') + sep) && safe !== root.replace(/\\/g, '/')) {
-    response.writeHead(403);
-    response.end('forbidden');
+const server = createServer((req, res) => {
+  const url = new URL(req.url, 'http://localhost');
+  const rel = normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, '');
+  const file = join(root, rel === '/' || rel === '' ? 'index.html' : rel);
+  if (!file.startsWith(root + sep) && file !== root) {
+    res.writeHead(403);
+    res.end('forbidden');
     return;
   }
-  let path = safe;
-  if (decoded.endsWith('/')) path = join(path, 'index.html');
   let stat;
   try {
-    stat = statSync(path);
+    stat = statSync(file);
   } catch {
-    response.writeHead(404);
-    response.end('not found');
+    res.writeHead(404);
+    res.end('not found');
     return;
   }
-  if (!stat.isFile()) {
-    response.writeHead(404);
-    response.end('not found');
+  if (stat.isDirectory()) {
+    res.writeHead(403);
+    res.end('forbidden');
     return;
   }
-  if (request.url === '/favicon.ico') {
-    response.writeHead(204);
-    response.end();
-    return;
-  }
-  const type = MIME[extname(path).toLowerCase()] || 'application/octet-stream';
-  response.writeHead(200, { 'content-type': type, 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff', 'content-length': stat.size });
-  if (request.method === 'HEAD') {
-    response.end();
-    return;
-  }
-  createReadStream(path).pipe(response);
-});
-
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`Port ${port} is already in use — stop the other server or pass --port <n>.`);
-    process.exit(1);
-  }
-  throw err;
+  res.writeHead(200, {
+    'content-type': MIME[extname(file)] || 'application/octet-stream',
+    'content-length': stat.size,
+    'cache-control': 'no-store',
+  });
+  createReadStream(file).pipe(res);
 });
 
 server.listen(port, () => {
-  console.log(`Solmar Bay on http://localhost:${port}`);
+  console.log(`Solmar Bay at http://localhost:${port}`);
 });

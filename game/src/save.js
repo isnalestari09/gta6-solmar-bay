@@ -1,88 +1,91 @@
-// Solmar Bay — save v2 in localStorage, with a v1 migration.
-// v2 adds taxi earnings and best wanted level; v1 only had cash and missions.
-// A hand-edited or corrupt save never breaks the game: every number is
-// clamped back into its sane range on load.
+// Solmar Bay — save game in localStorage. Format v2; a v1 save (cash and
+// mission only) migrates up, and a corrupt or out-of-range save is dropped.
 
-import { SAVE_KEY, SAVE_KEY_V1 } from './config.js';
+import { SAVE_KEY, SAVE_KEY_V1, ECONOMY } from './config.js';
+
+const SAVE_VERSION = 2;
 
 export function defaultSave() {
   return {
-    version: 2,
-    cash: 250,
-    missionsDone: 0,
-    coinsCollected: 0,
-    coinsTaken: [],
-    faresDone: 0,
-    taxiEarned: 0,
-    bestWanted: 0,
-    playSeconds: 0,
-    lastPlayed: 0,
+    version: SAVE_VERSION,
+    cash: ECONOMY.startCash,
+    missionIndex: 0,
+    coins: 0,
+    coinsCollected: [],
+    muted: false,
+    station: 0,
+    completed: [],
   };
 }
 
-function clampNumber(value, min, max, fallback) {
-  const n = Number.isFinite(value) ? Math.floor(value) : fallback;
-  return Math.max(min, Math.min(max, n));
+function isValidSave(s) {
+  if (!s || typeof s !== 'object') return false;
+  if (typeof s.cash !== 'number' || !Number.isFinite(s.cash)) return false;
+  if (s.cash < 0 || s.cash > 100000) return false;
+  if (!Number.isInteger(s.missionIndex) || s.missionIndex < 0 || s.missionIndex > 8) return false;
+  if (!Array.isArray(s.coinsCollected)) return false;
+  if (!Number.isInteger(s.coins) || s.coins < 0 || s.coins > 12) return false;
+  return true;
+}
+
+function migrateV1(raw) {
+  // v1 stored only { cash, mission } with no version field.
+  const out = defaultSave();
+  if (typeof raw.cash === 'number' && Number.isFinite(raw.cash)) {
+    out.cash = Math.max(0, Math.min(100000, Math.floor(raw.cash)));
+  }
+  if (Number.isInteger(raw.mission) && raw.mission >= 0 && raw.mission <= 8) {
+    out.missionIndex = raw.mission;
+  }
+  return out;
 }
 
 export function loadSave() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (raw) {
-      const data = JSON.parse(raw);
-      if (data && data.version === 2) {
-        const merged = { ...defaultSave(), ...data };
-        merged.cash = clampNumber(merged.cash, 0, 999999, 250);
-        merged.missionsDone = clampNumber(merged.missionsDone, 0, 8, 0);
-        merged.coinsCollected = clampNumber(merged.coinsCollected, 0, 12, 0);
-        merged.faresDone = clampNumber(merged.faresDone, 0, 9999, 0);
-        merged.taxiEarned = clampNumber(merged.taxiEarned, 0, 999999, 0);
-        merged.bestWanted = clampNumber(merged.bestWanted, 0, 5, 0);
-        merged.playSeconds = clampNumber(merged.playSeconds, 0, 999999, 0);
-        if (!Array.isArray(merged.coinsTaken)) merged.coinsTaken = [];
-        merged.coinsTaken = merged.coinsTaken.filter((i) => Number.isInteger(i) && i >= 0 && i < 12);
-        merged.coinsCollected = merged.coinsTaken.length;
-        return merged;
+      const parsed = JSON.parse(raw);
+      if (parsed.version === SAVE_VERSION && isValidSave(parsed)) return parsed;
+      if (parsed.version === SAVE_VERSION && !isValidSave(parsed)) return defaultSave();
+    }
+    const v1 = localStorage.getItem(SAVE_KEY_V1);
+    if (v1) {
+      const parsed = JSON.parse(v1);
+      const migrated = migrateV1(parsed);
+      if (isValidSave(migrated)) {
+        saveGame(migrated);
+        localStorage.removeItem(SAVE_KEY_V1);
+        return migrated;
       }
     }
-    // v1 migration: cash, missions done and the coins already taken.
-    const old = localStorage.getItem(SAVE_KEY_V1);
-    if (old) {
-      const v1 = JSON.parse(old);
-      const migrated = defaultSave();
-      if (typeof v1.cash === 'number') migrated.cash = clampNumber(v1.cash, 0, 999999, 250);
-      if (typeof v1.missionsDone === 'number') migrated.missionsDone = clampNumber(v1.missionsDone, 0, 8, 0);
-      if (Array.isArray(v1.coinsTaken)) {
-        migrated.coinsTaken = v1.coinsTaken.filter((i) => Number.isInteger(i) && i >= 0 && i < 12);
-        migrated.coinsCollected = migrated.coinsTaken.length;
-      }
-      return migrated;
-    }
-  } catch (err) {
-    // Corrupt save: start fresh rather than crash the game.
+  } catch (e) {
+    // Corrupt save: start fresh rather than crash.
   }
   return defaultSave();
 }
 
-export function writeSave(save) {
+export function saveGame(state) {
   try {
-    save.version = 2;
-    save.lastPlayed = Date.now();
-    localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-    // A v2 write makes the v1 key redundant; drop it so an old save can
-    // never shadow the new one.
-    localStorage.removeItem(SAVE_KEY_V1);
+    const data = {
+      version: SAVE_VERSION,
+      cash: Math.floor(state.cash),
+      missionIndex: state.missionIndex,
+      coins: state.coins,
+      coinsCollected: state.coinsCollected.slice(),
+      muted: !!state.muted,
+      station: state.station,
+      completed: (state.completed || []).slice(),
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     return true;
-  } catch (err) {
+  } catch (e) {
     return false;
   }
 }
 
-export function wipeSave() {
+export function clearSave() {
   try {
     localStorage.removeItem(SAVE_KEY);
     localStorage.removeItem(SAVE_KEY_V1);
-  } catch (err) {
-    // Storage may be unavailable in some sandboxes; the game still runs.
-  }
+  } catch (e) { /* storage unavailable */ }
 }

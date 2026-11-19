@@ -1,140 +1,145 @@
-// Solmar Bay — pedestrians: 26 locals who stroll the sidewalks, scatter
-// when a car comes close, and flee for a few seconds after a punch lands.
+// Solmar Bay — pedestrians: 26 locals strolling the sidewalks. They walk
+// their own block, chat-pause at corners, and flee when Dani punches them.
 
 import * as THREE from 'three';
-import { WORLD, mulberry32, distance2D } from './config.js';
-import { hitsCollider, clampToWorld } from './city.js';
+import { PEDS, WORLD } from './config.js';
+import { mulberry32 } from './city.js';
 
-const SHIRT_COLORS = [0xd8d8d8, 0x3c7dd8, 0xd83c6e, 0x3ca86e, 0xe0b13c, 0x7a4fd8];
+const SHIRTS = [0xd84315, 0x2e7d32, 0x1565c0, 0xf9a825, 0x6a1b9a, 0x00838f, 0xe0e0e0, 0xad1457];
 
-function makePedMesh(shirtColor) {
-  const group = new THREE.Group();
-  const skin = new THREE.MeshLambertMaterial({ color: 0xc98d5f });
-  const shirt = new THREE.MeshLambertMaterial({ color: shirtColor });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.0, 0.45), shirt);
-  body.position.y = 1.05;
-  group.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), skin);
-  head.position.y = 1.85;
-  group.add(head);
-  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.6, 0.28), new THREE.MeshLambertMaterial({ color: 0x333a44 }));
-  legL.position.set(-0.2, 0.3, 0);
-  group.add(legL);
+function makePedMesh(shirt) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(1.0, 1.4, 0.55),
+    new THREE.MeshLambertMaterial({ color: shirt }),
+  );
+  body.position.y = 1.3;
+  g.add(body);
+  const head = new THREE.Mesh(
+    new THREE.BoxGeometry(0.65, 0.65, 0.65),
+    new THREE.MeshLambertMaterial({ color: 0xc98a5e }),
+  );
+  head.position.y = 2.35;
+  g.add(head);
+  const legL = new THREE.Mesh(
+    new THREE.BoxGeometry(0.38, 0.85, 0.4),
+    new THREE.MeshLambertMaterial({ color: 0x2a2a2e }),
+  );
+  legL.position.set(-0.27, 0.42, 0);
+  g.add(legL);
   const legR = legL.clone();
-  legR.position.x = 0.2;
-  group.add(legR);
-  group.userData = { legL, legR };
-  return group;
+  legR.position.x = 0.27;
+  g.add(legR);
+  g.userData.legL = legL;
+  g.userData.legR = legR;
+  return g;
 }
 
 export class Pedestrians {
-  constructor(scene, colliders) {
-    this.colliders = colliders;
+  constructor(scene, city, seed) {
+    this.scene = scene;
+    this.city = city;
+    this.rng = mulberry32(seed + 31);
     this.peds = [];
-    const rand = mulberry32(31337);
-    for (let i = 0; i < 26; i++) {
-      const shirt = SHIRT_COLORS[i % SHIRT_COLORS.length];
+    for (const spot of city.pedSpots) {
+      const shirt = SHIRTS[Math.floor(this.rng() * SHIRTS.length)];
       const mesh = makePedMesh(shirt);
-      // Start on a sidewalk: just off a road line.
-      const line = WORLD.roadLines[Math.floor(rand() * WORLD.roadLines.length)];
-      const along = -160 + rand() * 320;
-      const horizontal = rand() < 0.5;
-      const x = horizontal ? along : line + 9;
-      const z = horizontal ? line + 9 : along;
-      mesh.position.set(x, 0, Math.min(z, WORLD.docksAt - 14));
+      mesh.position.copy(spot);
       scene.add(mesh);
       this.peds.push({
+        pos: spot.clone(),
+        heading: this.rng() * Math.PI * 2,
         mesh,
-        pos: mesh.position,
-        heading: rand() * Math.PI * 2,
-        speed: 1.2 + rand() * 1.1,
-        panic: 0,
-        walkPhase: rand() * 6,
+        speed: PEDS.walkSpeed * (0.8 + this.rng() * 0.5),
+        phase: this.rng() * 10,
+        fleeing: 0,
         down: false,
-        downTimer: 0,
+        health: 100,
+        target: null,
       });
     }
   }
 
-  update(dt, playerPos, cars, threats = []) {
+  // Pick a new strolling waypoint on a nearby sidewalk.
+  retarget(ped) {
+    const a = this.rng() * Math.PI * 2;
+    const r = 12 + this.rng() * 30;
+    ped.target = new THREE.Vector3(
+      Math.max(-WORLD.half + 10, Math.min(WORLD.half - 10, ped.pos.x + Math.cos(a) * r)),
+      0,
+      Math.max(-WORLD.half + 10, Math.min(WORLD.half - 10, ped.pos.z + Math.sin(a) * r)),
+    );
+  }
+
+  update(dt, playerPos, playerPunching) {
     for (const ped of this.peds) {
-      if (ped.down) {
-        ped.downTimer -= dt;
-        ped.mesh.rotation.x = ped.downTimer > 0 ? -Math.PI / 2 : 0;
-        if (ped.downTimer <= 0) {
-          ped.down = false;
-          ped.mesh.rotation.x = 0;
-        }
-        continue;
+      if (ped.down) continue;
+      const dPlayer = Math.hypot(ped.pos.x - playerPos.x, ped.pos.z - playerPos.z);
+      if (playerPunching && dPlayer < 3.5) ped.fleeing = 2.5;
+      let speed = ped.speed;
+      let dir;
+      if (ped.fleeing > 0) {
+        ped.fleeing -= dt;
+        speed = PEDS.fleeSpeed;
+        dir = new THREE.Vector3(ped.pos.x - playerPos.x, 0, ped.pos.z - playerPos.z).normalize();
+      } else {
+        if (!ped.target || ped.pos.distanceTo(ped.target) < 2) this.retarget(ped);
+        dir = ped.target.clone().sub(ped.pos).setY(0).normalize();
       }
-      ped.panic = Math.max(0, ped.panic - dt);
-      // Scatter from a fast car that gets close, and from a police car
-      // bearing down with its siren — peds know what that means.
-      let fleeX = 0;
-      let fleeZ = 0;
-      for (const car of cars) {
-        if (Math.abs(car.speed) < 4) continue;
-        const d = distance2D(ped.pos.x, ped.pos.z, car.pos.x, car.pos.z);
-        if (d < 7) {
-          const inv = 1 / Math.max(d, 0.5);
-          fleeX += (ped.pos.x - car.pos.x) * inv;
-          fleeZ += (ped.pos.z - car.pos.z) * inv;
-        }
-      }
-      for (const cop of threats) {
-        const d = distance2D(ped.pos.x, ped.pos.z, cop.pos.x, cop.pos.z);
-        if (d < 9) {
-          const inv = 1 / Math.max(d, 0.5);
-          fleeX += (ped.pos.x - cop.pos.x) * inv * 1.5;
-          fleeZ += (ped.pos.z - cop.pos.z) * inv * 1.5;
-          ped.panic = Math.max(ped.panic, 2);
-        }
-      }
-      const dPlayer = distance2D(ped.pos.x, ped.pos.z, playerPos.x, playerPos.z);
-      if (ped.panic > 0 && dPlayer < 8) {
-        fleeX += (ped.pos.x - playerPos.x) / Math.max(dPlayer, 0.5);
-        fleeZ += (ped.pos.z - playerPos.z) / Math.max(dPlayer, 0.5);
-      }
-      if (fleeX !== 0 || fleeZ !== 0) {
-        ped.heading = Math.atan2(fleeX, fleeZ);
-      } else if (Math.random() < dt * 0.08) {
-        // Wander: occasionally pick a new direction.
-        ped.heading += (Math.random() - 0.5) * 1.6;
-      }
-      const speed = ped.panic > 0 ? ped.speed * 3 : ped.speed;
-      const nx = ped.pos.x + Math.sin(ped.heading) * speed * dt;
-      const nz = ped.pos.z + Math.cos(ped.heading) * speed * dt;
-      ped.pos.x = nx;
-      ped.pos.z = nz;
-      if (hitsCollider(this.colliders, ped.pos.x, ped.pos.z, 0.5)) {
-        ped.pos.x -= Math.sin(ped.heading) * speed * dt;
-        ped.pos.z -= Math.cos(ped.heading) * speed * dt;
-        ped.heading += Math.PI / 2;
-      }
-      clampToWorld(ped.pos, 6);
-      ped.walkPhase += dt * speed * 3;
+      ped.pos.addScaledVector(dir, speed * dt);
+      this.city.collideCircle(ped.pos, 0.7);
+      ped.heading = Math.atan2(dir.x, dir.z);
+      ped.mesh.position.copy(ped.pos);
       ped.mesh.rotation.y = ped.heading;
-      ped.mesh.userData.legL.rotation.x = Math.sin(ped.walkPhase) * 0.5;
-      ped.mesh.userData.legR.rotation.x = -Math.sin(ped.walkPhase) * 0.5;
+      ped.phase += speed * dt * 2.2;
+      const swing = 0.45;
+      ped.mesh.userData.legL.rotation.x = Math.sin(ped.phase) * swing;
+      ped.mesh.userData.legR.rotation.x = -Math.sin(ped.phase) * swing;
     }
   }
 
-  // The punch test: returns the ped hit, if any, in front of the player.
-  punchAt(x, z, heading, range, arc) {
+  // The punch: anyone inside the arc in front of Dani takes damage. Returns
+  // how many went down.
+  punchAt(pos, heading) {
+    let downs = 0;
     for (const ped of this.peds) {
       if (ped.down) continue;
-      const d = distance2D(x, z, ped.pos.x, ped.pos.z);
-      if (d > range) continue;
-      const angleTo = Math.atan2(ped.pos.x - x, ped.pos.z - z);
-      let diff = angleTo - heading;
+      const dx = ped.pos.x - pos.x;
+      const dz = ped.pos.z - pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 2.8) continue;
+      const ang = Math.atan2(dx, dz);
+      let diff = ang - heading;
       while (diff > Math.PI) diff -= Math.PI * 2;
       while (diff < -Math.PI) diff += Math.PI * 2;
-      if (Math.abs(diff) > arc) continue;
-      ped.down = true;
-      ped.downTimer = 2.2;
-      ped.panic = 4;
-      return ped;
+      if (Math.abs(diff) > 1.1) continue;
+      ped.health -= 34;
+      ped.fleeing = 3;
+      if (ped.health <= 0) {
+        ped.down = true;
+        ped.mesh.rotation.x = -Math.PI / 2;
+        ped.mesh.position.y = 0.4;
+        downs += 1;
+      }
     }
-    return null;
+    return downs;
+  }
+
+  nearest(pos, maxDist) {
+    let best = null;
+    let bestD = maxDist;
+    for (const ped of this.peds) {
+      if (ped.down) continue;
+      const d = Math.hypot(ped.pos.x - pos.x, ped.pos.z - pos.z);
+      if (d < bestD) {
+        bestD = d;
+        best = ped;
+      }
+    }
+    return best;
+  }
+
+  countUp() {
+    return this.peds.filter((p) => !p.down).length;
   }
 }

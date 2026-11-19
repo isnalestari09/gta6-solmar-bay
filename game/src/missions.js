@@ -1,241 +1,186 @@
-// Solmar Bay — the story: eight missions that earn Dani the $2,600 to buy
-// his sister Lila's freedom from the Coral Kings. Each mission is a list of
-// steps — go somewhere, wait, punch, finish a fare, or outrun the law —
-// with a glowing marker in the world and live progress on the HUD.
+// Solmar Bay — the story: eight missions for Dani, from stealing his first
+// car to the $2,600 chase that buys Lila's freedom, plus taxi fares on the
+// side. A failed mission retries with the cash kept.
 
 import * as THREE from 'three';
-import { DOCKS, PLAZAS, distance2D } from './config.js';
-
-export const MISSIONS = [
-  {
-    name: 'First Wheels', payout: 150,
-    intro: 'Dani is back in Solmar Bay. First, wheels: steal a parked car and bring it to Plaza del Sol.',
-    steps: [
-      { type: 'steal', text: 'Steal a parked car — press E next to one' },
-      { type: 'goto', x: PLAZAS.sol.x, z: PLAZAS.sol.z, radius: 10, text: 'Drive the car to Plaza del Sol' },
-    ],
-  },
-  {
-    name: "Lila's Note", payout: 200,
-    intro: 'A note from Lila: meet her friend at Coral Plaza. Go on foot and wait for the contact.',
-    steps: [
-      { type: 'goto', x: PLAZAS.coral.x, z: PLAZAS.coral.z, radius: 8, text: 'Reach Coral Plaza on foot' },
-      { type: 'wait', x: PLAZAS.coral.x, z: PLAZAS.coral.z, radius: 8, seconds: 3, text: 'Wait for the contact' },
-    ],
-  },
-  {
-    name: 'The Drop', payout: 300,
-    intro: 'The Coral Kings want a package moved. Drive it to the docks warehouse — no questions.',
-    steps: [
-      { type: 'goto', x: 120, z: 150, radius: 8, text: 'Drive to the docks warehouse', car: true },
-      { type: 'wait', x: 120, z: 150, radius: 8, seconds: 2, text: 'Hand over the package' },
-    ],
-  },
-  {
-    name: 'Hot Cargo', payout: 400,
-    intro: 'Two stops, one hot cargo. Pick it up at the north plaza, drop it at the east gate.',
-    steps: [
-      { type: 'goto', x: 0, z: -120, radius: 8, text: 'Pick up the cargo at the north end' },
-      { type: 'goto', x: 160, z: 0, radius: 8, text: 'Deliver the cargo to the east gate' },
-    ],
-  },
-  {
-    name: 'Rough Crowd', payout: 500,
-    intro: 'Two hecklers at Coral Plaza are blocking the way. Show them Dani is back — with his fists.',
-    steps: [
-      { type: 'punch', count: 2, text: 'Knock down 2 hecklers at Coral Plaza (F to punch)' },
-    ],
-  },
-  {
-    name: 'Taxi Shift', payout: 350,
-    intro: 'A cab is waiting. Take a fare: get in the yellow taxi, press T, and drive the rider home.',
-    steps: [
-      { type: 'fare', text: 'Finish a taxi fare — get in the yellow taxi and press T' },
-    ],
-  },
-  {
-    name: 'The Exchange', payout: 600,
-    intro: 'The exchange is at the lighthouse. Go there, wait for the signal, then get to the boat.',
-    steps: [
-      { type: 'goto', x: DOCKS.lighthouse.x, z: DOCKS.lighthouse.z - 12, radius: 9, text: 'Reach the lighthouse' },
-      { type: 'wait', x: DOCKS.lighthouse.x, z: DOCKS.lighthouse.z - 12, radius: 9, seconds: 3, text: 'Wait for the signal' },
-      { type: 'goto', x: DOCKS.boat.x, z: DOCKS.boat.z - 10, radius: 9, text: 'Get to the boat at the docks' },
-    ],
-  },
-  {
-    name: 'One Last Chase', payout: 2600,
-    intro: 'It was a trap. Five stars, the whole force after you — reach the boat at the docks and get Lila out.',
-    steps: [
-      { type: 'chase', x: DOCKS.boat.x, z: DOCKS.boat.z - 10, radius: 10, text: 'Escape the police — reach the boat at the docks' },
-    ],
-  },
-];
-
-function makeMarker() {
-  const group = new THREE.Group();
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(2.2, 3, 24),
-    new THREE.MeshBasicMaterial({ color: 0xffd800, side: THREE.DoubleSide, transparent: true, opacity: 0.9 }),
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.15;
-  group.add(ring);
-  const beam = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.5, 0.5, 30, 8, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0xffd800, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false }),
-  );
-  beam.position.y = 15;
-  group.add(beam);
-  group.visible = false;
-  return group;
-}
+import { MISSIONS, ECONOMY } from './config.js';
 
 export class MissionManager {
-  constructor(scene) {
-    this.scene = scene;
-    this.marker = makeMarker();
-    scene.add(this.marker);
-    this.activeIndex = -1;
+  constructor(game) {
+    this.game = game;
+    this.index = game.save.missionIndex || 0;
+    this.active = false;
     this.stepIndex = 0;
     this.stepProgress = 0;
-    this.waitTimer = 0;
-    this.punchCount = 0;
-    this.fareStarted = false;
-    this.done = false;
+    this.failed = false;
+    this.completedAll = this.index >= MISSIONS.length;
+    this.taxi = null; // { ped, dest, fare }
+    this.marker = null; // { pos, radius } — the current objective marker
+    this.chaseHeat = false;
   }
 
-  get active() {
-    return this.activeIndex >= 0 ? MISSIONS[this.activeIndex] : null;
+  get current() {
+    return MISSIONS[this.index] || null;
   }
 
   get step() {
-    const mission = this.active;
-    return mission ? mission.steps[this.stepIndex] : null;
+    const m = this.current;
+    return m ? m.steps[this.stepIndex] : null;
   }
 
-  get isChaseStep() {
-    return this.step && this.step.type === 'chase';
-  }
-
-  start(index) {
-    this.activeIndex = index;
+  start() {
+    const m = this.current;
+    if (!m || this.active) return false;
+    this.active = true;
+    this.failed = false;
     this.stepIndex = 0;
     this.stepProgress = 0;
-    this.waitTimer = 0;
-    this.punchCount = 0;
-    this.done = false;
-    this._placeMarker();
-    return this.active;
+    this.applyStep();
+    this.game.hud.showToast(`${m.name} — ${m.brief}`);
+    this.game.audio.chime(true);
+    return true;
   }
 
-  _placeMarker() {
+  applyStep() {
     const step = this.step;
-    if (!step) {
-      this.marker.visible = false;
-      return;
-    }
-    if (step.x !== undefined) {
-      this.marker.position.set(step.x, 0, step.z);
-      this.marker.visible = true;
+    this.marker = null;
+    this.chaseHeat = false;
+    if (!step) return;
+    if (step.target) {
+      this.marker = { pos: new THREE.Vector3(step.target[0], 0, step.target[1]), radius: step.radius || 10 };
+      this.game.world.setObjectiveMarker(this.marker);
     } else {
-      this.marker.visible = false;
+      this.game.world.setObjectiveMarker(null);
     }
-  }
-
-  onCarStolen() {
-    const step = this.step;
-    if (step && step.type === 'steal') this._advance();
-  }
-
-  onPunch() {
-    const step = this.step;
-    if (step && step.type === 'punch') {
-      this.punchCount += 1;
-      if (this.punchCount >= step.count) this._advance();
+    if (step.kind === 'chase') {
+      this.chaseHeat = true;
+      this.game.wanted.frozen = true;
+      this.game.wanted.setStars(step.wanted || 5);
     }
+    if (step.kind === 'punch') this.stepProgress = 0;
+    if (step.kind === 'coins') this.stepProgress = this.game.coinsCollectedThisMission || 0;
+    if (step.kind === 'wanted') this.stepProgress = 0;
   }
 
-  onFareStart() {
+  // Returns true when the step (and maybe the mission) just completed.
+  update(dt, player) {
+    if (!this.active) return;
     const step = this.step;
-    if (step && step.type === 'fare') this.fareStarted = true;
+    if (!step) return;
+    const dist = this.marker ? Math.hypot(player.pos.x - this.marker.pos.x, player.pos.z - this.marker.pos.z) : Infinity;
+    let done = false;
+    if (step.kind === 'reach' || step.kind === 'chase') {
+      if (dist < (step.radius || 10)) done = true;
+    } else if (step.kind === 'steal') {
+      if (player.inCar) done = true;
+    } else if (step.kind === 'punch') {
+      if (this.stepProgress >= (step.count || 1)) done = true;
+    } else if (step.kind === 'coins') {
+      if (this.stepProgress >= (step.count || 1)) done = true;
+    } else if (step.kind === 'wanted') {
+      if (this.game.wanted.stars >= (step.needStars || 2)) this.stepProgress = 1;
+      if (this.stepProgress === 1 && this.game.wanted.stars === 0) done = true;
+    }
+    if (done) this.advance();
   }
 
-  onFareComplete() {
-    const step = this.step;
-    if (step && step.type === 'fare') this._advance();
-  }
-
-  _advance() {
+  advance() {
+    const m = this.current;
+    this.game.audio.chime(true);
     this.stepIndex += 1;
-    this.waitTimer = 0;
-    if (this.stepIndex >= this.active.steps.length) {
-      this.done = true;
-      this.marker.visible = false;
-      return;
+    if (this.stepIndex >= m.steps.length) {
+      this.complete(m);
+    } else {
+      this.applyStep();
+      this.game.hud.showToast(this.step.text);
     }
-    this._placeMarker();
   }
 
-  // Returns 'complete' when the mission is finished, 'step' when a step
-  // finished this frame, or null.
-  update(dt, playerPos, inCar) {
+  complete(m) {
+    this.active = false;
+    this.game.wanted.frozen = false;
+    this.game.cash += m.pay;
+    this.game.save.completed.push(m.id);
+    this.index += 1;
+    this.game.save.missionIndex = this.index;
+    this.game.saveGame();
+    this.game.world.setObjectiveMarker(null);
+    this.marker = null;
+    if (this.index >= MISSIONS.length) {
+      this.completedAll = true;
+      this.game.hud.showStoryEnd();
+    } else {
+      this.game.hud.showToast(`Mission complete — $${m.pay}. Next: ${MISSIONS[this.index].name} (press M)`);
+    }
+  }
+
+  fail(reason) {
+    if (!this.active) return;
+    this.active = false;
+    this.failed = true;
+    this.game.wanted.frozen = false;
+    this.game.world.setObjectiveMarker(null);
+    this.marker = null;
+    this.game.audio.chime(false);
+    this.game.hud.showToast(`Mission failed: ${reason}. Press M to retry — your cash is kept.`);
+  }
+
+  retry() {
+    this.failed = false;
+    this.start();
+  }
+
+  // Taxi fares: press T near a pedestrian to pick them up, drive them to
+  // the marker, earn the fare.
+  tryTaxi(player, peds) {
+    if (this.taxi) return false;
+    if (!player.inCar) return false;
+    const ped = peds.nearest(player.pos, 6);
+    if (!ped) return false;
+    const dest = new THREE.Vector3(
+      (Math.floor(Math.random() * 9) - 4) * 60,
+      0,
+      (Math.floor(Math.random() * 8) - 4) * 60,
+    );
+    this.taxi = { ped, dest, fare: ECONOMY.taxiFare };
+    ped.target = dest;
+    ped.speed = 0;
+    this.game.world.setObjectiveMarker({ pos: dest, radius: 10 });
+    this.game.hud.showToast(`Taxi fare — take the passenger to the marker ($${ECONOMY.taxiFare})`);
+    return true;
+  }
+
+  updateTaxi(player) {
+    if (!this.taxi) return;
+    const d = Math.hypot(player.pos.x - this.taxi.dest.x, player.pos.z - this.taxi.dest.z);
+    if (d < 10) {
+      this.game.cash += this.taxi.fare;
+      this.game.hud.showToast(`Fare paid — $${this.taxi.fare}`);
+      this.game.audio.chime(true);
+      this.taxi.ped.speed = 2.2;
+      this.taxi = null;
+      if (this.active) this.applyStep();
+      else this.game.world.setObjectiveMarker(null);
+      this.game.saveGame();
+    }
+  }
+
+  // The objective line for the HUD.
+  objectiveText(player) {
+    if (this.taxi) {
+      const d = Math.round(Math.hypot(player.pos.x - this.taxi.dest.x, player.pos.z - this.taxi.dest.z));
+      return `Taxi fare — drop off the passenger — ${d}m`;
+    }
+    if (!this.active) {
+      const m = this.current;
+      return m ? `Next mission: ${m.name} — press M to start` : 'All missions complete — Lila is free!';
+    }
     const step = this.step;
-    if (!step || this.done) return this.done ? 'complete' : null;
-    if (step.type === 'goto' || step.type === 'chase') {
-      const d = distance2D(playerPos.x, playerPos.z, step.x, step.z);
-      if (step.car && !inCar) return null;
-      if (d <= step.radius) {
-        this._advance();
-        return this.done ? 'complete' : 'step';
-      }
-      return null;
-    }
-    if (step.type === 'wait') {
-      const d = distance2D(playerPos.x, playerPos.z, step.x, step.z);
-      if (d <= step.radius) {
-        this.waitTimer += dt;
-        if (this.waitTimer >= step.seconds) {
-          this._advance();
-          return this.done ? 'complete' : 'step';
-        }
-      } else {
-        this.waitTimer = 0;
-      }
-      return null;
-    }
-    return null;
-  }
-
-  objectiveText(playerPos) {
-    const mission = this.active;
-    if (!mission) return null;
-    const step = this.step;
-    if (!step) return null;
-    let text = step.text;
-    if (step.type === 'fare' && this.fareStarted) {
-      text = 'Fare in progress — drive to the green ring';
-    }
-    if (step.type === 'punch') {
-      text += ` — ${Math.min(this.punchCount, step.count)}/${step.count}`;
-    }
-    if (step.type === 'wait') {
-      text += ` — ${Math.max(0, Math.ceil(step.seconds - this.waitTimer))}s`;
-    }
-    if ((step.type === 'goto' || step.type === 'chase') && step.x !== undefined) {
-      const d = Math.round(distance2D(playerPos.x, playerPos.z, step.x, step.z));
-      text += ` — ${d}m`;
-    }
-    return { mission: mission.name, payout: mission.payout, text };
-  }
-
-  fail() {
-    this.activeIndex = -1;
-    this.stepIndex = 0;
-    this.marker.visible = false;
-    this.done = false;
-  }
-
-  clear() {
-    this.fail();
+    if (!step) return '';
+    const d = this.marker ? ` — ${Math.round(Math.hypot(player.pos.x - this.marker.pos.x, player.pos.z - this.marker.pos.z))}m` : '';
+    if (step.kind === 'punch') return `${step.text} (${this.stepProgress}/${step.count})${d}`;
+    if (step.kind === 'coins') return `${step.text} (${this.stepProgress}/${step.count})`;
+    if (step.kind === 'wanted') return this.stepProgress === 1 ? 'Now lose the police!' : step.text;
+    return step.text + d;
   }
 }

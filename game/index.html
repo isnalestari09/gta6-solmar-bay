@@ -3,98 +3,93 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Solmar Bay — An Open-World Crime Story</title>
-<meta name="description" content="Solmar Bay: an original open-world crime game. Steal cars, outrun the law, run fares and jobs across a sunset city, and buy Lila's freedom for $2,600.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='7' fill='%23ffb26b'/></svg>">
+<title>Solmar Bay — an open-world crime game</title>
 <style>
-  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #1a1210; font-family: 'Segoe UI', Arial, sans-serif; }
-  #game-canvas { display: block; width: 100%; height: 100%; }
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #ffb36b; font-family: 'Trebuchet MS', Verdana, sans-serif; }
+  #game { position: fixed; inset: 0; }
+  #game canvas { display: block; }
+  .hud { position: fixed; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,.7); pointer-events: none; z-index: 5; }
+  #cash { top: 14px; left: 18px; font-size: 34px; font-weight: 900; color: #7dff8a; }
+  #coins { top: 56px; left: 18px; font-size: 18px; font-weight: 700; color: #ffd24a; }
+  #stars { top: 82px; left: 18px; font-size: 24px; letter-spacing: 2px; color: #cfd8dc; }
+  #stars.hot { color: #ffd24a; }
+  #mission-name { top: 14px; right: 18px; font-size: 19px; font-weight: 900; color: #ffd24a; text-align: right; }
+  #mission-obj { top: 40px; right: 18px; font-size: 15px; text-align: right; max-width: 460px; }
+  #health { bottom: 118px; left: 18px; font-size: 16px; font-weight: 700; }
+  #health.low { color: #ff5252; }
+  #speed { bottom: 88px; left: 18px; font-size: 26px; font-weight: 900; }
+  #car-health { bottom: 148px; left: 18px; font-size: 15px; font-weight: 700; }
+  #radio { bottom: 64px; left: 18px; font-size: 16px; font-weight: 700; color: #ffd24a; }
+  #help { bottom: 14px; left: 18px; font-size: 13px; line-height: 1.45; opacity: .92; white-space: pre-line; }
+  #minimap { bottom: 14px; right: 18px; width: 200px; height: 200px; border: 3px solid rgba(255,255,255,.75); border-radius: 10px; background: #0e1a2e; }
+  #toast { top: 96px; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: 700; background: rgba(0,0,0,.55); padding: 10px 18px; border-radius: 8px; opacity: 0; transition: opacity .3s; max-width: 80vw; text-align: center; }
+  #toast.show { opacity: 1; }
+  .overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #fff; background: rgba(20, 10, 4, .62); z-index: 10; cursor: pointer; }
   .hidden { display: none !important; }
-  #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; z-index: 5; }
-  #hud-top-left { position: absolute; top: 14px; left: 16px; text-shadow: 0 2px 4px #000; }
-  #hud-cash { font-size: 30px; font-weight: 800; color: #7dff8a; }
-  #hud-coins { font-size: 15px; font-weight: 700; color: #ffd800; margin-top: 2px; }
-  #hud-stars { font-size: 22px; letter-spacing: 3px; margin-top: 2px; }
-  #hud-top-right { position: absolute; top: 14px; right: 16px; text-align: right; text-shadow: 0 2px 4px #000; max-width: 380px; }
-  #hud-mission { font-size: 15px; font-weight: 700; color: #ffd800; }
-  #hud-objective { font-size: 14px; margin-top: 4px; color: #fff; }
-  #hud-bottom-left { position: absolute; bottom: 16px; left: 16px; text-shadow: 0 2px 4px #000; font-size: 14px; }
-  #hud-speed { font-size: 26px; font-weight: 800; }
-  #hud-health { font-size: 14px; color: #ffb0b0; }
-  #hud-radio { margin-top: 4px; color: #ffd800; font-weight: 600; }
-  #minimap { position: absolute; bottom: 16px; right: 16px; border: 2px solid rgba(255,255,255,0.5); border-radius: 8px; background: rgba(0,0,0,0.4); }
-  #hud-toast { position: absolute; top: 84px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.75); padding: 10px 18px; border-radius: 8px; font-size: 15px; opacity: 0; transition: opacity 0.25s; max-width: 80%; text-align: center; }
-  #hud-toast.show { opacity: 1; }
-  #hud-banner { position: absolute; top: 38%; left: 50%; transform: translate(-50%, -50%) scale(0.9); font-size: 34px; font-weight: 900; color: #ffd800; text-shadow: 0 3px 10px #000; opacity: 0; transition: opacity 0.3s, transform 0.3s; text-align: center; }
-  #hud-banner.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-  .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(10, 8, 14, 0.82); z-index: 10; color: #fff; }
-  .panel { max-width: 560px; padding: 32px 40px; text-align: center; background: rgba(20, 16, 24, 0.9); border: 2px solid #c23a2a; border-radius: 14px; }
-  .panel h1 { margin: 0 0 6px; font-size: 46px; letter-spacing: 2px; color: #ffb36a; }
-  .panel h2 { margin: 0 0 14px; font-size: 16px; font-weight: 400; color: #ffd800; letter-spacing: 3px; }
-  .panel p { font-size: 15px; line-height: 1.55; color: #e8e0d0; }
-  .controls { text-align: left; font-size: 13.5px; line-height: 1.8; color: #cfc8b8; margin: 14px auto; display: inline-block; }
-  .btn { pointer-events: auto; cursor: pointer; display: inline-block; margin: 8px 6px 0; padding: 12px 26px; font-size: 16px; font-weight: 700; color: #fff; background: #c23a2a; border: none; border-radius: 8px; }
-  .btn.secondary { background: #3a5a7a; }
-  .btn:hover { filter: brightness(1.15); }
-  #busted-text { font-size: 22px; }
+  .overlay.hidden { display: none; }
+  .overlay h1 { font-size: 64px; margin: 0 0 6px; letter-spacing: 4px; color: #ffd24a; text-shadow: 0 4px 0 rgba(0,0,0,.4); }
+  .overlay h2 { font-size: 26px; margin: 0 0 18px; color: #ffb36b; }
+  .overlay p { font-size: 17px; line-height: 1.6; max-width: 620px; margin: 0 0 14px; padding: 0 20px; }
+  .overlay .cta { font-size: 20px; font-weight: 900; color: #7dff8a; animation: pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+  .overlay .keys { font-size: 14px; opacity: .9; white-space: pre-line; }
 </style>
 <script type="importmap">
-{ "imports": { "three": "./vendor/three.module.min.js" } }
+{
+  "imports": {
+    "three": "./vendor/three.module.min.js"
+  }
+}
 </script>
 </head>
 <body>
-<noscript><p style="color:#fff;padding:40px;font-size:18px">Solmar Bay needs JavaScript to run — please enable it and reload.</p></noscript>
-<canvas id="game-canvas"></canvas>
-<div id="hud">
-  <div id="hud-top-left">
-    <div id="hud-cash">$250</div>
-    <div id="hud-coins">◉ 0/12 coins</div>
-    <div id="hud-stars">☆☆☆☆☆</div>
-  </div>
-  <div id="hud-top-right">
-    <div id="hud-mission">FREE ROAM</div>
-    <div id="hud-objective">Press M to start your next mission</div>
-  </div>
-  <div id="hud-bottom-left">
-    <div id="hud-speed"></div>
-    <div id="hud-health"></div>
-    <div id="hud-radio">♪ BAYWAVE FM — Synthwave</div>
-    <div>WASD move/drive · E enter car · F / Space punch · Shift sprint · P pause<br>M mission · T taxi fare · R radio · 1-4 stations · N mute</div>
-  </div>
-  <canvas id="minimap" width="180" height="180"></canvas>
-  <div id="hud-toast"></div>
-  <div id="hud-banner"></div>
+<div id="game"></div>
+<div class="hud" id="cash">$250</div>
+<div class="hud" id="coins">◉ 0/12</div>
+<div class="hud" id="stars">☆☆☆☆☆</div>
+<div class="hud" id="mission-name">FREE ROAM</div>
+<div class="hud" id="mission-obj">Next mission: First Wheels — press M to start</div>
+<div class="hud" id="health">HEALTH 100%</div>
+<div class="hud" id="speed"></div>
+<div class="hud hidden" id="car-health">CAR 100%</div>
+<div class="hud" id="radio">♪ BAYWAVE FM — Synthwave</div>
+<div class="hud" id="help">WASD move/drive · E enter car · F / Space punch · Shift sprint · P pause
+M mission · T taxi fare · R radio · 1-4 stations · N mute</div>
+<canvas class="hud" id="minimap" width="200" height="200"></canvas>
+<div class="hud" id="toast"></div>
+
+<div class="overlay" id="menu">
+  <h1>SOLMAR BAY</h1>
+  <h2>Dani Reyes is home — and his sister Lila is not free.</h2>
+  <p>The Coral Kings hold Lila for <b>$2,600</b>. Steal cars, run missions, dodge the
+  police and earn every dollar in the sun-soaked streets of Solmar Bay. Grab the
+  sunset coins, take taxi fares, and finish the chase to Lila's boat at the docks.</p>
+  <p class="cta">CLICK OR PRESS ENTER TO PLAY</p>
+  <p class="keys">WASD move / drive · E enter car · F or Space punch · Shift sprint · P pause
+M mission · T taxi fare · R radio · 1-4 stations · N mute</p>
 </div>
-<div id="menu" class="overlay">
-  <div class="panel">
-    <h1>SOLMAR BAY</h1>
-    <h2>AN OPEN-WORLD CRIME STORY</h2>
-    <p id="menu-story">Dani Reyes, getaway driver, is back in coastal Solmar Bay. The Coral Kings hold his sister Lila — and the price of her freedom is $2,600. Steal cars, outrun the law, run fares and jobs across the city, and bring her home.</p>
-    <div class="controls">
-      WASD — walk / drive &nbsp;·&nbsp; Mouse drag — camera<br>
-      Shift — sprint &nbsp;·&nbsp; E — enter / leave car &nbsp;·&nbsp; F / Space — punch<br>
-      M — next mission &nbsp;·&nbsp; T — taxi fare (in the yellow taxi)<br>
-      R / 1-4 — radio stations &nbsp;·&nbsp; N — mute &nbsp;·&nbsp; P — pause
-    </div>
-    <br>
-    <button class="btn" id="btn-new">NEW GAME</button>
-    <button class="btn secondary" id="btn-continue">CONTINUE</button>
-  </div>
+
+<div class="overlay hidden" id="pause">
+  <h1>PAUSED</h1>
+  <p>Solmar Bay waits for no one — except right now.</p>
+  <p class="cta">PRESS P TO KEEP PLAYING</p>
 </div>
-<div id="pause" class="overlay hidden">
-  <div class="panel">
-    <h1>PAUSED</h1>
-    <p>Solmar Bay waits for no one. Well — except now.</p>
-    <button class="btn" id="btn-resume">RESUME</button>
-  </div>
+
+<div class="overlay hidden" id="busted">
+  <h1>BUSTED</h1>
+  <p>The Solmar Bay police took $100 and your mission. Your cash is kept —<br>
+  the streets are still yours.</p>
+  <p class="cta">PRESS ENTER TO GET BACK OUT THERE</p>
 </div>
-<div id="busted" class="overlay hidden">
-  <div class="panel">
-    <h1>BUSTED</h1>
-    <p id="busted-text">The Solmar Bay PD caught up with you.</p>
-    <button class="btn" id="btn-busted">BACK TO THE STREETS</button>
-  </div>
+
+<div class="overlay hidden" id="story-end">
+  <h1>LILA IS FREE</h1>
+  <p>Dani outran the Kings, outran the law, and paid the $2,600. The boat is
+  waiting at the docks — and the whole bay is his now. Free roam: keep the
+  coins, the fares and the sunsets coming.</p>
+  <p class="cta">CLICK TO KEEP PLAYING</p>
 </div>
+
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
