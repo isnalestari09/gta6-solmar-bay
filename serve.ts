@@ -1,8 +1,11 @@
-// A tiny static server for game/ (Node 22, standard library only), so the
-// entry can be played locally without a build step — revision 2, unchanged
-// behaviour, header touched so the file traces to this recorded session:
-// `node serve.ts` serves
-// game/ on http://localhost:8080. Development convenience only.
+// A tiny static server for game/ (Node 22, standard library only), so
+// the entry can be played locally without a build step:
+//   node serve.ts            serves game/ on http://localhost:8080
+//   node serve.ts --port 8091
+// It sends the MIME types a browser game needs, refuses any path outside
+// game/, and otherwise does nothing clever: a development convenience,
+// not a web server for the internet.
+
 import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
@@ -27,39 +30,26 @@ const MIME = {
   '.webp': 'image/webp',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
-  '.txt': 'text/plain; charset=utf-8',
 };
 
-createServer((request, response) => {
-  const url = new URL(request.url ?? '/', 'http://localhost');
-  let pathname;
+const server = createServer((req, res) => {
+  const urlPath = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+  const rel = normalize(urlPath).replace(/^[/\\]+/, '');
+  const file = join(root, rel);
+  if (!file.startsWith(root + sep) && file !== root) {
+    res.writeHead(403); res.end('forbidden'); return;
+  }
+  let path = file;
   try {
-    pathname = decodeURIComponent(url.pathname);
-  } catch {
-    response.writeHead(400).end('bad request');
-    return;
-  }
-  if (pathname.endsWith('/')) pathname += 'index.html';
-  const file = resolve(join(root, normalize(pathname)));
-  if (file !== root && !file.startsWith(root + sep)) {
-    response.writeHead(403).end('forbidden');
-    return;
-  }
-  let size;
+    if (statSync(path).isDirectory()) path = join(path, 'index.html');
+  } catch { /* fall through to the 404 below */ }
   try {
-    const stats = statSync(file);
-    if (!stats.isFile()) throw new Error('not a file');
-    size = stats.size;
+    const stat = statSync(path);
+    res.writeHead(200, { 'content-type': MIME[extname(path)] || 'application/octet-stream', 'content-length': stat.size });
+    createReadStream(path).pipe(res);
   } catch {
-    response.writeHead(404).end('not found');
-    return;
+    res.writeHead(404); res.end('not found');
   }
-  response.writeHead(200, {
-    'content-type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
-    'content-length': size,
-    'cache-control': 'no-store',
-  });
-  createReadStream(file).pipe(response);
-}).listen(port, '127.0.0.1', () => {
-  console.log(`game/ is on http://localhost:${port}`);
 });
+
+server.listen(port, () => console.log(`Solmar Bay on http://localhost:${port}`));

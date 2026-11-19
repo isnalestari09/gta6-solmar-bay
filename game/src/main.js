@@ -1,444 +1,318 @@
-// Solmar Bay — entry point. Wires the world together: renderer, camera,
-// lights, city, cars, pedestrians, wanted system, missions, HUD, save and
-// the fixed-step game loop. The game runs offline from static files only.
-// Revision 2: camera shake on collisions, mission-fail recording on death,
-// Shift sprint on foot, the new coin-pickup SFX, and HUD mission progress.
+// Solmar Bay — game loop, camera, interactions and state machine.
+// States: title → playing ⇄ paused → dead / complete. Everything else
+// (city, cars, peds, wanted, missions) lives in its own module.
 
 import * as THREE from 'three';
-import { WORLD, PLAYER, ECONOMY, MISSIONS, RADIO_STATIONS } from './config.js';
 import { Input } from './input.js';
-import { Radio } from './audio.js';
 import { City } from './city.js';
-import { VehicleManager } from './vehicles.js';
-import { PedestrianManager } from './pedestrians.js';
+import { Vehicles } from './vehicles.js';
+import { Pedestrians } from './pedestrians.js';
 import { Wanted } from './wanted.js';
 import { Player } from './player.js';
-import { MissionManager } from './missions.js';
-import { Hud } from './hud.js';
+import { Missions } from './missions.js';
+import { HUD } from './hud.js';
+import { AudioEngine } from './audio.js';
 import { loadSave, writeSave } from './save.js';
-import { parseShot, applyShot } from './shots.js';
-
-const $ = (id) => document.getElementById(id);
+import { MISSIONS, COINS } from './config.js';
+import { applyShot } from './shots.js';
 
 export class Game {
-  constructor(seed = 1) {
-    this.seed = seed;
+  constructor() {
     this.input = new Input();
-    this.radio = new Radio();
+    this.audio = new AudioEngine();
+    this.hud = new HUD();
     this.save = loadSave();
-    this.state = 'title'; // title | playing | paused | dead | complete
-    this.cameraMode = 'foot';
-    this.clock = 8 * 60; // minutes since midnight
+    this.state = 'title';
+    this.time = 0;
+    this.cameraMode = 'title';
+    this.autoDrive = false;
+    this.shake = 0;
+    this.taxiTimer = 0;
     this.cash = this.save.cash || 0;
-    this.coinsCollected = new Set(this.save.coinsCollected || []);
-    this.coinMeshes = [];
-    this._hitCooldown = 0;
-    this._punchCooldown = 0;
-    this._shotCooldown = 0;
-    this._shake = 0; // revision 2: camera-shake magnitude, decays each frame
-
-    this._renderer();
-    this._lights();
-    this.city = new City(this.scene, seed);
-    this.vehicles = new VehicleManager(this.scene, this.city, seed);
-    this.peds = new PedestrianManager(this.scene, this.city, seed);
+    this._setupThree();
+    this.city = new City(this.scene);
+    this.vehicles = new Vehicles(this.scene, this.city);
+    this.peds = new Pedestrians(this.scene, this.city);
     this.player = new Player(this.scene);
-    this.wanted = new Wanted(this.vehicles, this.radio);
-    this.hud = new Hud();
-    this.missions = new MissionManager(this.scene, this.city, this.radio, (t, p) => this._onEvent(t, p));
-    this.missions.startMission(this.save.missionIndex || 0);
-    this._coins();
-    this._cameraSetup();
-    this._resize();
-    window.addEventListener('resize', () => this._resize());
+    this.missions = new Missions(this.scene);
+    this.wanted = new Wanted(this.vehicles, this.audio);
+    this.missions.index = Math.min(this.save.mission - 1, MISSIONS.length - 1);
+    this.missions._placeBeacon();
+    this._showTitle();
+    this._bindShot();
   }
 
-  _renderer() {
-    this.renderer = new THREE.WebGLRenderer({ canvas: $('game'), antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  _setupThree() {
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.getElementById('game').appendChild(this.renderer.domElement);
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x87b5d6);
-    this.scene.fog = new THREE.Fog(0x87b5d6, 180, 420);
+    this.scene.background = new THREE.Color(0x87b5d9);
+    this.scene.fog = new THREE.Fog(0x87b5d9, 180, 420);
     this.camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 900);
-  }
-
-  _lights() {
-    const sun = new THREE.DirectionalLight(0xfff2d8, 1.6);
-    sun.position.set(120, 180, 60);
-    sun.castShadow = true;
-    sun.shadow.camera.left = -220; sun.shadow.camera.right = 220;
-    sun.shadow.camera.top = 220; sun.shadow.camera.bottom = -220;
+    const sun = new THREE.DirectionalLight(0xfff2cc, 1.6);
+    sun.position.set(120, 180, -60);
     this.scene.add(sun);
-    this.scene.add(new THREE.AmbientLight(0xbfd4e6, 0.7));
-  }
-
-  _coins() {
-    const geo = new THREE.CylinderGeometry(0.9, 0.9, 0.18, 16);
-    const mat = new THREE.MeshBasicMaterial({ color: 0xffd54a });
-    this.city.coinSpots.forEach((spot, i) => {
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.rotation.x = Math.PI / 2;
-      mesh.position.set(spot.x, 1.4, spot.z);
-      mesh.userData.index = i;
-      this.scene.add(mesh);
-      this.coinMeshes.push(mesh);
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    window.addEventListener('resize', () => {
+      this.camera.aspect = window.innerWidth / window.innerHeight;
+      this.camera.updateProjectionMatrix();
+      this.renderer.setSize(window.innerWidth, window.innerHeight);
     });
   }
 
-  _cameraSetup() {
-    this._camPos = new THREE.Vector3(0, 8, 30);
-    this._camLook = new THREE.Vector3(0, 1, 0);
-    this.camera.position.copy(this._camPos);
-    this.camera.lookAt(this._camLook);
+  _showTitle() {
+    this.hud.showScreen(
+      'SOLMAR BAY',
+      'Dani Reyes pulang kampung. Delapan misi, satu tebusan, dan seluruh kota mengejarnya. WASD jalan / nyetir, E curi mobil, klik tembak, P jeda, R ganti radio.',
+      'Tekan ENTER untuk main',
+    );
   }
 
-  _resize() {
-    this.camera.aspect = window.innerWidth / window.innerHeight;
-    this.camera.updateProjectionMatrix();
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-  }
-
-  // --- screens ----------------------------------------------------------
-  showTitleScreen() {
-    this.state = 'title';
-    this.hud.showScreen('title', 'SOLMAR BAY',
-      'Dani Reyes is back. The Coral Kings hold his sister Lila — buy her freedom, one job at a time.',
-      'Press Enter to start · WASD move · E steal a car · F punch · Click shoot');
-  }
-
-  startPlaying() {
+  _bindShot() {
+    const q = new URLSearchParams(window.location.search);
+    const shot = q.get('shot');
+    if (!shot) return;
+    // Staged shots start from a clean slate, not from a previous save.
+    this.cash = 0;
+    this.missions.index = 0;
+    this.missions.failed = false;
+    this.missions.done = false;
+    this.missions._placeBeacon();
     this.state = 'playing';
     this.hud.hideScreen();
-    this.radio.ensure();
+    applyShot(this, shot);
+    this.audio.ensure();
   }
 
-  pause() {
-    if (this.state !== 'playing') return;
-    this.state = 'paused';
-    this.hud.showScreen('pause', 'PAUSED', 'Solmar Bay waits for you.', 'Press P to resume · R to restart the run');
-  }
-
-  resume() {
-    if (this.state !== 'paused') return;
+  start() {
     this.state = 'playing';
     this.hud.hideScreen();
-  }
-
-  die() {
-    this.missions.fail(); // revision 2: record the failure; cash is kept
-    this.state = 'dead';
-    this.hud.showScreen('dead', 'WASTED',
-      'Dani went down in Solmar Bay. The Coral Kings keep Lila — for now.',
-      'Press R to try again');
-  }
-
-  completeStory() {
-    this.state = 'complete';
-    this.hud.showScreen('complete', 'LILA IS FREE',
-      `Dani paid the price and brought his sister home. Final cash: $${this.cash.toLocaleString()}.`,
-      'Press R to play again');
-  }
-
-  // --- events -----------------------------------------------------------
-  _onEvent(type, payload) {
-    if (type === 'cash') {
-      this.cash += payload.amount;
-      this.hud.toast(`+$${payload.amount} — ${payload.why}`);
-      this.radio.cash();
-      this._autosave();
-    } else if (type === 'mission-complete') {
-      this.hud.toast(`Mission complete: ${payload.mission.name}`);
-    } else if (type === 'mission-failed') {
-      this.hud.toast(`Mission failed: ${payload.mission.name} — cash kept, press N to retry it.`);
-    } else if (type === 'mission-retry') {
-      this.hud.toast(`Retrying: ${payload.mission.name}`);
-    } else if (type === 'story-complete') {
-      this.completeStory();
-    } else if (type === 'save') {
-      this._autosave();
-    }
+    this.audio.ensure();
+    this.audio.startRadio();
+    this.hud.toast(`Misi ${this.missions.index + 1}: ${this.missions.current().name}`);
   }
 
   _autosave() {
-    this.save.cash = this.cash;
-    this.save.missionIndex = Math.min(this.missions.index, MISSIONS.length - 1);
-    this.save.coinsCollected = [...this.coinsCollected];
-    writeSave(this.save);
+    writeSave({ cash: this.cash, mission: this.missions.index + 1, coins: this.city.coins.filter((c) => c.taken).map((c) => `${c.x},${c.z}`), completed: this.missions.done });
   }
 
-  // --- per-frame update ---------------------------------------------------
-  update(dt) {
-    this.clock = (this.clock + dt * 0.5) % (24 * 60); // game time runs 30x
-    this.vehicles.updateTraffic(dt);
-    this._updateCoins(dt);
-    this.peds.update(dt, this.player.inCar ? this.player.inCar.pos : null);
+  _nearestParked() {
+    let best = null, bd = 5;
+    for (const car of this.vehicles.parked) {
+      if (car.taken) continue;
+      const d = Math.hypot(car.x - this.player.x, car.z - this.player.z);
+      if (d < bd) { bd = d; best = car; }
+    }
+    return best;
+  }
 
-    // Screens: Enter starts, P resumes, R restarts after death / completion.
-    if (this.state === 'title' && this.input.pressed('Enter')) {
-      this.startPlaying();
-      this.input.endFrame();
-      return;
-    }
-    if (this.state === 'paused' && this.input.pressed('KeyP')) {
-      this.resume();
-      this.input.endFrame();
-      return;
-    }
-    if ((this.state === 'dead' || this.state === 'complete') && this.input.pressed('KeyR')) {
-      window.location.reload();
-      return;
-    }
-    if (this.state !== 'playing') { this.input.endFrame(); return; }
+  _shoot() {
+    if (!this.player.shoot()) { this.hud.toast('Peluru habis!'); return; }
+    this.audio.shoot();
+    this.peds.scatter(this.player.x + Math.sin(this.player.angle) * 8, this.player.z + Math.cos(this.player.angle) * 8);
+    this.wanted.addCrime(8, 'shooting');
+    // A muzzle flash: a short-lived bright box in front of the player.
+    const flash = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 2.5), new THREE.MeshBasicMaterial({ color: 0xffe066 }));
+    flash.position.set(
+      this.player.x + Math.sin(this.player.angle) * 3,
+      1.4,
+      this.player.z + Math.cos(this.player.angle) * 3,
+    );
+    this.scene.add(flash);
+    setTimeout(() => this.scene.remove(flash), 90);
+  }
 
-    const inp = this.input;
-    const player = this.player;
+  _updatePlaying(dt) {
+    const p = this.player;
+    const res = p.update(dt, this.input, this.city);
+    if (res.crashed) { this.audio.crash(); this.shake = 0.5; this.hud.toast('Tabrakan!'); }
+    this.vehicles.update(dt, p);
+    this.peds.update(dt);
+    this.wanted.update(dt, p);
+    this.missions.update(dt, this.time);
 
-    if (inp.pressed('KeyP')) { this.pause(); inp.endFrame(); return; }
-    if (inp.pressed('KeyM')) {
-      const muted = this.radio.toggleMute();
-      this.hud.toast(muted ? 'Muted' : 'Sound on');
-    }
-    if (inp.pressed('KeyQ')) {
-      const s = this.radio.nextStation();
-      this.hud.toast(`Radio: ${RADIO_STATIONS[s].name}`);
-    }
-    if (inp.pressed('KeyN')) {
-      // Revision 2: N retries the current mission after a failure; otherwise
-      // it just points at the beacon. Cash is never reset by a retry.
-      if (this.missions.failedCount > 0 && this.missions.current) {
-        this.missions.retry();
-      } else {
-        this.hud.toast(this.missions.current ? 'Mission already running — follow the gold beacon.' : 'Story complete.');
-      }
-    }
-    if (inp.pressed('KeyR') && (this.state === 'dead' || this.state === 'complete')) {
-      window.location.reload();
-      return;
-    }
-
-    // Enter / exit a car.
-    if (inp.pressed('KeyE')) {
-      if (player.inCar) {
-        player.exitCar();
-        this.cameraMode = 'foot';
-      } else {
-        const car = this.vehicles.nearestParked(player.pos, 5);
+    // Steal / exit a car.
+    if (this.input.wasPressed('e')) {
+      if (p.inCar) { p.exitCar(); this.hud.toast('Keluar mobil'); }
+      else {
+        const car = this._nearestParked();
         if (car) {
-          player.enterCar(car);
-          this.cameraMode = 'car';
-          this.wanted.add(20, 'Grand theft auto');
-          this.peds.scatterNear(player.pos.x, player.pos.z, 12);
-          this.hud.toast('Car stolen! The cops noticed.');
+          p.x = car.x; p.z = car.z; p.enterCar(car);
+          this.wanted.addCrime(12, 'grand theft auto');
+          this.hud.toast('Mobil dicuri! Polisi mengejar.');
         }
       }
     }
-
-    if (player.inCar) {
-      this._updateDriving(dt);
-    } else {
-      this._updateOnFoot(dt);
+    // Shoot on click.
+    if (this.input.mouse.clicked && this.state === 'playing') this._shoot();
+    // Radio + mute.
+    if (this.input.wasPressed('r')) this.hud.setRadio(this.audio.nextStation());
+    if (this.input.wasPressed('m')) this.hud.toast(this.audio.toggleMute() ? 'Suara mati' : 'Suara hidup');
+    // Pause.
+    if (this.input.wasPressed('p') || this.input.wasPressed('Escape')) {
+      this.state = 'paused';
+      this.input.clearAll();
+      this.hud.showScreen('JEDA', 'Istirahat dulu, Dani.', 'Tekan P untuk lanjut');
+      return;
     }
-
-    // Wanted: police chase and ramming.
-    const focus = player.inCar ? player.inCar.pos : player.pos;
-    const ram = this.wanted.update(dt, focus, !!player.inCar, this.city);
-    if (ram && ram.rammed) {
-      this._shake = 0.5; // revision 2: camera shake on a police ram
-      if (player.takeDamage(ram.damage)) { this.die(); return; }
-      this.radio.crash();
-      this.hud.toast('Police rammed you!');
+    // Mission fail retry (N) — only while a mission is marked failed.
+    if (this.missions.failed && this.input.wasPressed('n')) {
+      this.missions.retry();
+      this.hud.toast('Misi diulang. Uangmu aman.');
     }
-
-    // Missions progress.
-    this.missions.update(dt, focus, !!player.inCar, this.wanted.level);
-
-    // Cooldowns.
-    this._hitCooldown = Math.max(0, this._hitCooldown - dt);
-    this._punchCooldown = Math.max(0, this._punchCooldown - dt);
-    this._shotCooldown = Math.max(0, this._shotCooldown - dt);
-
-    this._updateCamera(dt);
-    this._updateHud();
-    inp.endFrame();
-  }
-
-  _updateOnFoot(dt) {
-    const player = this.player;
-    const axes = this.input.moveAxes();
-    // Revision 2: hold Shift (either side) to sprint on foot.
-    player.walk(dt, axes, this.city, this.input.down('ShiftLeft') || this.input.down('ShiftRight'));
-
-    // Punch (F): nearest pedestrian in front takes damage and flees.
-    if (this.input.pressed('KeyF') && this._punchCooldown <= 0) {
-      this._punchCooldown = 0.45;
-      this.radio.punch();
-      let best = null; let bestD = 3;
-      for (const p of this.peds.peds) {
-        const d = Math.hypot(p.pos.x - player.pos.x, p.pos.z - player.pos.z);
-        if (d < bestD) { bestD = d; best = p; }
-      }
-      if (best) {
-        best.fleeing = 2;
-        this.wanted.add(10, 'Assault');
-        this.hud.toast('You shoved a pedestrian. Someone called the cops.');
+    // Auto-drive for staged shots.
+    if (this.autoDrive && p.inCar) {
+      p.carSpeed = Math.max(p.carSpeed, 26);
+      const road = this.city.nearestRoad(p.z);
+      p.z += (road - p.z) * dt * 0.8;
+    }
+    // Coins.
+    for (const coin of this.city.coins) {
+      if (coin.taken) continue;
+      coin.mesh.rotation.y += dt * 2;
+      if (Math.hypot(p.x - coin.x, p.z - coin.z) < 3) {
+        coin.taken = true;
+        coin.mesh.visible = false;
+        this.cash += 50;
+        this.audio.coinPickup();
+        this.hud.toast('Koin matahari terbenam! +$50');
       }
     }
-
-    // Shoot (click): hits the nearest ped or police car in front, within range.
-    if (this.input.clicked && this._shotCooldown <= 0 && player.ammo > 0) {
-      this._shotCooldown = 0.3;
-      player.ammo--;
-      this.radio.shoot();
-      this.wanted.add(15, 'Shots fired');
-      this.peds.scatterNear(player.pos.x, player.pos.z, 20);
-      let best = null; let bestD = 40;
-      for (const p of this.peds.peds) {
-        const d = Math.hypot(p.pos.x - player.pos.x, p.pos.z - player.pos.z);
-        if (d < bestD) { bestD = d; best = p; }
-      }
-      if (best) {
-        best.fleeing = 3;
-        this.hud.toast('Shot fired — the street empties.');
+    // Taxi fares: driving a stolen car slowly through the city earns tips.
+    if (p.inCar && Math.abs(p.carSpeed) > 4) {
+      this.taxiTimer += dt;
+      if (this.taxiTimer > 20) { this.taxiTimer = 0; this.cash += 25; this.hud.toast('Ongkos taksi +$25'); }
+    }
+    // Police rams hurt.
+    for (const cop of this.vehicles.police) {
+      if (Math.hypot(cop.x - p.x, cop.z - p.z) < 3.5) {
+        p.health -= 18 * dt;
+        this.shake = Math.max(this.shake, 0.35);
+        if (Math.random() < dt * 2) this.hud.toast('Polisi menabrakmu!');
+        if (p.health <= 0) { this._die(); return; }
       }
     }
-  }
-
-  _updateDriving(dt) {
-    const player = this.player;
-    const car = player.inCar;
-    const axes = this.input.moveAxes();
-    if (this.autoDrive) axes.forward = 1; // staged shots keep driving
-    const hitWall = car.drive(dt, -axes.strafe, axes.forward, this.city);
-    if (hitWall && Math.abs(car.speed) > 12 && this._hitCooldown <= 0) {
-      this._hitCooldown = 0.8;
-      this._shake = 0.6; // revision 2: camera shake on a hard crash
-      this.radio.crash();
-      if (player.takeDamage(4)) { this.die(); return; }
-    }
-    // Running over a pedestrian is a crime (and slows the car a touch).
-    for (const p of this.peds.peds) {
-      if (Math.hypot(p.pos.x - car.pos.x, p.pos.z - car.pos.z) < 2.2) {
-        p.fleeing = 2;
-        p.pos.x += Math.sin(car.angle) * 3;
-        p.pos.z += Math.cos(car.angle) * 3;
-        this.wanted.add(10, 'Hit and run');
-        car.speed *= 0.7;
-      }
-    }
-    // Keep traffic and police from overlapping the player car.
-    this.vehicles.separate([car, ...this.vehicles.traffic, ...this.vehicles.police]);
-  }
-
-  _updateCoins(dt) {
-    for (const mesh of this.coinMeshes) {
-      const i = mesh.userData.index;
-      if (this.coinsCollected.has(i)) { mesh.visible = false; continue; }
-      mesh.rotation.y += dt * 2;
-      mesh.position.y = 1.4 + Math.sin(performance.now() / 400 + i) * 0.25;
-      if (this.state !== 'playing') continue;
-      const focus = this.player.inCar ? this.player.inCar.pos : this.player.pos;
-      const d = Math.hypot(focus.x - mesh.position.x, focus.z - mesh.position.z);
-      if (d < 2.5) {
-        this.coinsCollected.add(i);
-        mesh.visible = false;
-        this.cash += ECONOMY.coinValue;
-        this.radio.coinPickup(); // revision 2: dedicated coin-pickup SFX
-        this.hud.toast(`Sunset coin! +$${ECONOMY.coinValue}`);
-        this.missions.onCoin();
+    // Mission completion.
+    const pay = this.missions.check(p.x, p.z);
+    if (pay > 0) {
+      this.cash += pay;
+      this.audio.missionDone();
+      this.hud.toast(`Misi selesai! +$${pay}`);
+      if (this.missions.done) {
+        this.state = 'complete';
         this._autosave();
+        this.hud.showScreen('LILA BEBAS!', `Dani menebus adiknya. Total uang: $${this.cash}. Solmar Bay akhirnya tenang.`, 'Tekan ENTER untuk main lagi');
+        return;
       }
+      const next = this.missions.current();
+      if (next) this.hud.toast(`Misi ${next.id}: ${next.name} — ${next.text}`);
     }
+    // Epilogue rule: mission 8 only counts once the heat is gone.
+    if (this.missions.index === 7 && this.wanted.stars > 0) {
+      this.hud.setObjective('Misi 8/8: sembunyi dulu sampai bintang hilang!', 0.5);
+    } else {
+      const m = this.missions.current();
+      if (m) this.hud.setObjective(`Misi ${m.id}/8: ${m.name} — ${m.text}`, this.missions.index / 8);
+    }
+    // Mission timer: taking too long on a mission fails it (retry keeps cash).
+    this._missionClock = (this._missionClock || 0) + dt;
+    if (this._missionClock > 240 && !this.missions.failed) {
+      this.missions.fail();
+      this._missionClock = 0;
+      this.hud.showScreen('MISI GAGAL', 'Waktu habis. Uangmu tidak hilang.', 'Tekan N untuk coba lagi');
+    }
+    this._autosave();
   }
 
-  // Snap the chase camera straight to its target (used by staged shots so
-  // the first rendered frame already frames the subject).
-  snapCamera() {
-    const player = this.player;
-    const focus = player.inCar ? player.inCar.pos : player.pos;
-    const heading = player.inCar ? player.inCar.angle : player.angle;
-    const dist = player.inCar ? 13 : 9;
-    const height = player.inCar ? 5.5 : 4.2;
-    this._camPos.set(
-      focus.x - Math.sin(heading) * dist,
-      height,
-      focus.z - Math.cos(heading) * dist,
-    );
-    this._camLook.set(focus.x, 1.5, focus.z);
-    this.camera.position.copy(this._camPos);
-    this.camera.lookAt(this._camLook);
+  _die() {
+    this.state = 'dead';
+    this._autosave();
+    this.hud.showScreen('DANI TERTANGKAP', 'Polisi Solmar Bay akhirnya menangkapmu. Lila masih menunggu.', 'Tekan ENTER untuk coba lagi');
+  }
+
+  _restart() {
+    this.player.reset(0, -20);
+    this.wanted.clear();
+    this.missions.index = 0;
+    this.missions.failed = false;
+    this.missions.done = false;
+    this.missions._placeBeacon();
+    this.cash = 0;
+    this._missionClock = 0;
+    this.start();
   }
 
   _updateCamera(dt) {
-    const player = this.player;
-    const focus = player.inCar ? player.inCar.pos : player.pos;
-    const heading = player.inCar ? player.inCar.angle : player.angle;
-    const dist = player.inCar ? 13 : 9;
-    const height = player.inCar ? 5.5 : 4.2;
-    const wantPos = new THREE.Vector3(
-      focus.x - Math.sin(heading) * dist,
-      height,
-      focus.z - Math.cos(heading) * dist,
-    );
-    this._camPos.lerp(wantPos, 1 - Math.pow(0.001, dt));
-    this._camLook.lerp(new THREE.Vector3(focus.x, 1.5, focus.z), 1 - Math.pow(0.0001, dt));
-    this.camera.position.copy(this._camPos);
-    this.camera.lookAt(this._camLook);
-    // Revision 2: camera shake — a decaying random offset applied after the
-    // camera is placed, so the jolt is visible on the rendered frame.
-    if (this._shake > 0.001) {
-      this.camera.position.x += (Math.random() - 0.5) * this._shake;
-      this.camera.position.y += (Math.random() - 0.5) * this._shake * 0.6;
-      this._shake *= Math.pow(0.02, dt);
+    const p = this.player;
+    let target, look;
+    if (this.cameraMode === 'title') {
+      const t = this.time * 0.08;
+      target = new THREE.Vector3(Math.cos(t) * 90 - 40, 42, Math.sin(t) * 90 - 40);
+      look = new THREE.Vector3(-40, 6, -40);
+    } else if (this.cameraMode === 'orbit') {
+      const t = this.time * 0.15;
+      target = new THREE.Vector3(p.x + Math.cos(t) * 22, 12, p.z + Math.sin(t) * 22);
+      look = new THREE.Vector3(p.x, 2, p.z);
+    } else {
+      const behind = p.inCar ? 13 : 9;
+      const height = p.inCar ? 6 : 5;
+      const bx = p.x - Math.sin(p.angle) * behind;
+      const bz = p.z - Math.cos(p.angle) * behind;
+      target = new THREE.Vector3(bx, height, bz);
+      look = new THREE.Vector3(p.x + Math.sin(p.angle) * 6, 1.5, p.z + Math.cos(p.angle) * 6);
     }
+    if (this.shake > 0) {
+      this.shake -= dt;
+      target.x += (Math.random() - 0.5) * this.shake * 2;
+      target.y += (Math.random() - 0.5) * this.shake * 2;
+    }
+    this.camera.position.lerp(target, 1 - Math.pow(0.001, dt));
+    this.camera.lookAt(look);
   }
 
-  _updateHud() {
-    const player = this.player;
-    const m = this.missions.current;
-    this.hud.update({
-      health: player.health,
-      cash: this.cash,
-      ammo: player.ammo,
-      speedKmh: player.inCar ? Math.abs(player.inCar.speed) * 3.6 : 0,
-      stars: this.wanted.level,
-      objective: this.missions.objective,
-      station: `♪ ${RADIO_STATIONS[this.radio.station].name}`,
-      time: this.clock,
-      missionIndex: this.missions.index,
-      missionTotal: MISSIONS.length,
-    });
-    this.hud.drawMinimap(
-      player.inCar ? player.inCar.pos : player.pos,
-      player.inCar ? player.inCar.angle : player.angle,
-      m ? m.target : null,
-      this.vehicles.police.map((c) => c.pos),
-      this.city.coinSpots.filter((_, i) => !this.coinsCollected.has(i)),
-      WORLD.size,
-    );
+  _syncHud() {
+    const p = this.player;
+    this.hud.setCash(this.cash);
+    this.hud.setStars(this.wanted.stars);
+    this.hud.setHealth(p.health);
+    this.hud.setSpeed(p.inCar ? Math.abs(p.carSpeed) * 3.6 : p.speed * 3.6);
+    this.hud.drawMinimap(p, this.missions, this.vehicles, this.city);
   }
 
-  // --- main loop ----------------------------------------------------------
+  frame(dt) {
+    this.time += dt;
+    if (this.state === 'playing') this._updatePlaying(dt);
+    if (this.input.wasPressed('Enter')) {
+      if (this.state === 'title') this.start();
+      else if (this.state === 'dead' || this.state === 'complete') this._restart();
+    }
+    if (this.state === 'paused' && this.input.wasPressed('p')) {
+      this.state = 'playing';
+      this.input.clearAll();
+      this.hud.hideScreen();
+    }
+    this._updateCamera(dt);
+    this._syncHud();
+    this.renderer.render(this.scene, this.camera);
+    this.input.endFrame();
+  }
+
   run() {
     let last = performance.now();
-    const frame = (now) => {
-      const dt = Math.min(0.05, (now - last) / 1000);
+    const loop = (now) => {
+      const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
-      this.update(dt);
-      this.renderer.render(this.scene, this.camera);
-      requestAnimationFrame(frame);
+      this.frame(dt);
+      requestAnimationFrame(loop);
     };
-    requestAnimationFrame(frame);
+    requestAnimationFrame(loop);
   }
 }
 
-// Boot.
-const params = parseShot();
-const game = new Game(params.seed);
-window.__game = game;
-window.__solmar = { state: () => game.state, cash: () => game.cash };
-const staged = applyShot(game, params.shot);
-if (staged) game.snapCamera();
-if (!staged) game.showTitleScreen();
-game.run();
+window.addEventListener('DOMContentLoaded', () => {
+  const game = new Game();
+  window.__game = game;
+  game.run();
+});

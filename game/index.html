@@ -1,44 +1,37 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="id">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Solmar Bay — Open-World Crime Game · 8 Missions, New North Plaza</title>
-<meta name="description" content="Solmar Bay: an original open-world crime game. Eight story missions, a second plaza, four radio stations — Dani Reyes buys his sister Lila's freedom.">
-<link rel="icon" href="data:,">
+<meta name="description" content="Solmar Bay — open-world crime game: 8 missions, a coastal city, cars to steal, police, radio. Built for make.fun gta6-01.">
+<title>Solmar Bay — Open World Crime Game</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #0e1420; font-family: 'Segoe UI', system-ui, sans-serif; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #101418; font-family: system-ui, sans-serif; }
+  #game { position: fixed; inset: 0; }
+  #game canvas { display: block; }
   #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; }
-  .hud-top { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .bar { width: 180px; height: 16px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.4); border-radius: 8px; overflow: hidden; }
-  .bar .fill { height: 100%; width: 100%; background: #2ecc71; }
-  .stat { background: rgba(0,0,0,.55); padding: 6px 10px; border-radius: 8px; font-weight: 700; font-size: 15px; }
-  .cash { color: #7dff9a; }
-  .stars { letter-spacing: 2px; font-size: 18px; }
-  .objective { position: absolute; top: 58px; left: 12px; max-width: 420px; background: rgba(0,0,0,.55); padding: 10px 12px; border-radius: 8px; font-size: 14px; line-height: 1.4; border-left: 4px solid #ffd54a; }
-  .objective-step { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #ffd54a; text-transform: uppercase; margin-bottom: 4px; }
-  .objective-bar { height: 4px; background: rgba(255,255,255,.2); border-radius: 2px; margin-top: 8px; overflow: hidden; }
-  .objective-bar .fill { height: 100%; width: 0%; background: #ffd54a; }
-  .station { position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,.55); padding: 6px 10px; border-radius: 8px; font-size: 13px; }
-  .help { position: absolute; bottom: 12px; left: 12px; background: rgba(0,0,0,.45); padding: 6px 10px; border-radius: 8px; font-size: 12px; color: #ddd; }
-  .toasts { position: absolute; bottom: 52px; left: 12px; display: flex; flex-direction: column; gap: 6px; }
-  .toast { background: rgba(0,0,0,.65); padding: 7px 11px; border-radius: 8px; font-size: 14px; }
-  .minimap { position: absolute; bottom: 12px; right: 12px; border: 2px solid rgba(255,255,255,.5); border-radius: 8px; background: #1d2b1a; }
-  .screen { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; background: radial-gradient(ellipse at center, rgba(10,20,40,.55), rgba(5,10,20,.88)); padding: 20px; }
-  .screen h1 { font-size: 64px; letter-spacing: 6px; margin: 0 0 12px; color: #ffd54a; text-shadow: 0 4px 24px rgba(0,0,0,.8); }
-  .screen p { font-size: 18px; max-width: 560px; line-height: 1.5; margin: 6px 0; }
-  .screen .hint { font-size: 14px; color: #ffd54a; }
-  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  #cash { position: absolute; top: 14px; left: 16px; font-size: 28px; font-weight: 800; text-shadow: 0 2px 6px #000; }
+  #stars { position: absolute; top: 48px; left: 16px; font-size: 24px; letter-spacing: 2px; text-shadow: 0 2px 6px #000; }
+  #health { position: absolute; top: 82px; left: 16px; font-size: 18px; text-shadow: 0 2px 6px #000; }
+  #speed { position: absolute; bottom: 16px; left: 16px; font-size: 20px; text-shadow: 0 2px 6px #000; }
+  #radio { position: absolute; bottom: 16px; right: 16px; font-size: 15px; background: rgba(0,0,0,.55); padding: 6px 10px; border-radius: 6px; }
+  #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); width: 420px; max-width: 80vw; background: rgba(0,0,0,.55); border-radius: 8px; padding: 8px 12px; }
+  #objective-text { font-size: 14px; display: block; }
+  #objective-bar { height: 6px; background: #ffc93c; border-radius: 3px; margin-top: 6px; width: 0%; transition: width .3s; }
+  #toast { position: absolute; bottom: 64px; left: 50%; transform: translateX(-50%); font-size: 18px; background: rgba(0,0,0,.65); padding: 8px 16px; border-radius: 8px; opacity: 0; transition: opacity .3s; white-space: nowrap; }
+  #minimap { position: absolute; top: 14px; right: 14px; border: 2px solid rgba(255,255,255,.6); border-radius: 8px; background: #1e2b1e; }
+  #screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(8, 12, 20, .72); text-align: center; padding: 20px; }
+  #screen h1 { font-size: 64px; margin: 0; letter-spacing: 6px; color: #ffc93c; text-shadow: 0 4px 18px #000; }
+  #screen p { font-size: 18px; max-width: 640px; line-height: 1.5; }
+  #screen-hint { color: #ffc93c; font-weight: 700; }
 </style>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.min.js" } }
 </script>
 </head>
 <body>
-<canvas id="game" aria-label="Solmar Bay: open-world crime game. Eight missions, a second plaza and four radio stations. Drive, steal cars, outrun the police and buy back Dani's sister Lila. Controls: WASD move, E steal car, F punch, click shoot, Shift sprint, Q radio, P pause."></canvas>
+<div id="game"></div>
 <div id="hud"></div>
-<p id="status" role="status" aria-live="polite"></p>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

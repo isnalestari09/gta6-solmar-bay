@@ -1,92 +1,64 @@
-// Staged screenshots: `?shot=start|play|chase|mission|plaza&seed=1` puts the game
-// into a fixed, deterministic pose so headless Chrome renders the exact
-// frame the dossier's screenshots show. `applyShot` runs after the game
-// world exists and before the first rendered frame.
+// Staged screenshot modes, driven by ?shot=...&seed=1. Each mode places
+// Dani, a car and the camera so the first rendered frame already frames
+// the subject, and (for driving shots) auto-drives so the car does not
+// coast to a stop under slow software rendering.
 
-export function parseShot() {
-  const q = new URLSearchParams(window.location.search);
-  return {
-    shot: q.get('shot') || null,
-    seed: Number(q.get('seed') || 1),
-  };
-}
+import { MISSIONS } from './config.js';
 
-export function applyShot(game, shot) {
-  if (!shot) return false;
+export const SHOTS = {
+  start: { label: 'Title screen at the south plaza' },
+  play: { label: 'Driving down the main road' },
+  chase: { label: 'Three-star police chase' },
+  mission: { label: 'Dani at the Coral Kings compound' },
+  plaza: { label: 'The north plaza, mission 8 beacon' },
+};
+
+export function applyShot(game, name) {
   const g = game;
-  g.startPlaying(); // skip the title screen in shot mode
-  if (shot === 'start') {
-    // Title-screen look: Dani on foot at the plaza, fountain behind him.
-    g.player.pos.set(0, 0, 34);
+  if (name === 'start') {
+    g.player.reset(-120, -100);
     g.player.angle = Math.PI;
-    g.player.mesh.position.copy(g.player.pos);
-    g.showTitleScreen();
-    return true;
+    g.cameraMode = 'title';
+    return;
   }
-  if (shot === 'play') {
-    // Driving fast down the main road towards the plaza fountain.
-    const car = g.vehicles.parked[3] || g.vehicles.parked[0];
-    g.player.pos.set(car.pos.x, 0, car.pos.z);
-    g.player.enterCar(car);
-    car.pos.set(-180, 0, 60);
-    car.angle = Math.PI / 2;
-    car.speed = 28;
-    g.autoDrive = true; // keep the throttle on for the staged photo
-    g.cameraMode = 'car';
-    return true;
-  }
-  if (shot === 'chase') {
-    // Three-star chase at speed: two police cars closing in.
-    const car = g.vehicles.parked[5] || g.vehicles.parked[0];
-    g.player.pos.set(car.pos.x, 0, car.pos.z);
-    g.player.enterCar(car);
-    car.pos.set(-150, 0, 0);
-    car.angle = Math.PI / 2;
-    car.speed = 34;
-    g.autoDrive = true;
-    g.wanted.add(60, 'shot');
-    g.wanted._fadeTimer = 999; // keep the stars up for the photo
-    const cops = g.vehicles.police;
-    const spots = [[30, 6], [-20, -4], [-35, 5]];
-    cops.forEach((cop, i) => {
-      const [dx, dz] = spots[i % spots.length];
-      cop.pos.set(car.pos.x + dx, 0, car.pos.z + dz);
-      cop.angle = Math.PI / 2;
-      cop.speed = 30;
-    });
-    g.cameraMode = 'car';
-    return true;
-  }
-  if (shot === 'plaza') {
-    // Revision 2: Dani on foot at the second (north) plaza, its fountain
-    // behind him — the epilogue mission's rendezvous point.
-    g.player.pos.set(90, 0, 104);
+  if (name === 'play') {
+    g.player.reset(0, 60);
+    const car = g.vehicles.parked[0];
+    if (car) { g.player.x = car.x; g.player.z = car.z; g.player.enterCar(car); g.player.carSpeed = 30; g.autoDrive = true; }
     g.player.angle = Math.PI;
-    g.player.mesh.position.copy(g.player.pos);
-    g.player.mesh.rotation.y = g.player.angle;
-    g.missions.startMission(7); // epilogue: 'One Last Chase'
-    g.cameraMode = 'foot';
-    return true;
+    g.cameraMode = 'chase';
+    return;
   }
-  if (shot === 'mission') {
-    // On foot at the Coral Kings compound, facing two of their men.
-    g.player.pos.set(132, 0, -132);
-    g.player.angle = Math.PI * 0.75;
-    g.player.mesh.position.copy(g.player.pos);
-    g.player.mesh.rotation.y = g.player.angle;
-    const near = g.peds.peds.slice(0, 2);
-    near[0].pos.set(142, 0, -142);
-    near[1].pos.set(138, 0, -146);
-    for (const p of near) {
-      p.mesh.position.copy(p.pos);
-      p.fleeing = 0;
-      p.speed = 0; // hold still for the staged photo
-      p.angle = Math.atan2(g.player.pos.x - p.pos.x, g.player.pos.z - p.pos.z);
-      p.mesh.rotation.y = p.angle;
-    }
-    g.missions.startMission(6); // finale: "Buy Lila's Freedom"
-    g.cameraMode = 'foot';
-    return true;
+  if (name === 'chase') {
+    g.player.reset(0, 40);
+    const car = g.vehicles.parked[1] || g.vehicles.parked[0];
+    if (car) { g.player.x = car.x; g.player.z = car.z; g.player.enterCar(car); g.player.carSpeed = 28; g.autoDrive = true; }
+    g.wanted.addCrime(55, 'chase');
+    g.wanted.addCrime(10, 'chase');
+    // Stage one cruiser ahead on the road so the chase reads in the frame.
+    g.vehicles.spawnPolice(g.player.x + 30, g.player.z + 10);
+    g.cameraMode = 'chase';
+    return;
   }
-  return false;
+  if (name === 'mission') {
+    g.missions.index = 6;
+    g.missions._placeBeacon();
+    // Stand on road x=80, south of the beacon at (80,80), facing north:
+    // the road is clear of buildings, so the camera sees the beacon.
+    g.player.reset(80, 62);
+    g.player.angle = 0;
+    g.cameraMode = 'chase';
+    return;
+  }
+  if (name === 'plaza') {
+    g.missions.index = 7;
+    g.missions._placeBeacon();
+    g.player.reset(120, 100);
+    g.player.angle = Math.PI;
+    g.cameraMode = 'orbit';
+    return;
+  }
+  g.player.reset(0, -20);
 }
+
+export function shotList() { return Object.keys(SHOTS); }

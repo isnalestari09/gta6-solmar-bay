@@ -1,52 +1,39 @@
-// Keyboard + mouse input, polled by the game loop. Keys are tracked by
-// `code` so WASD and arrows both work, and clicks are edge-triggered.
-// Revision 2: the most recent key is remembered (lastPressed) so the HUD
-// and debug hooks can tell what the player just did.
+// Keyboard + mouse input. Tracks held keys, just-pressed keys, and the
+// mouse position for aiming. Cleared on demand so a pause toggle cannot
+// fire twice in one frame.
 
 export class Input {
   constructor() {
-    this.keys = new Set();
-    this.clicked = false;       // true for exactly one frame after a click
-    this.mouseX = 0;
-    this.mouseY = 0;
-    this.lastCode = null; // revision 2: most recent key pressed
+    this.held = new Set();
+    this.pressed = new Set();
+    this.mouse = { x: 0, y: 0, down: false, clicked: false };
     this._onKeyDown = (e) => {
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
-      this.lastCode = e.code;
-      this.keys.add(e.code);
-      // Single-press actions are read through `pressed` below.
-      this._pressed.add(e.code);
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (!this.held.has(k)) this.pressed.add(k);
+      this.held.add(k);
     };
-    this._onKeyUp = (e) => this.keys.delete(e.code);
-    this._onMouseDown = (e) => {
-      this.clicked = true;
-      this.mouseX = e.clientX;
-      this.mouseY = e.clientY;
+    this._onKeyUp = (e) => {
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      this.held.delete(k);
     };
-    this._pressed = new Set();
+    this._onMouseMove = (e) => { this.mouse.x = e.clientX; this.mouse.y = e.clientY; };
+    this._onMouseDown = (e) => { this.mouse.down = true; this.mouse.clicked = true; };
+    this._onMouseUp = () => { this.mouse.down = false; };
     window.addEventListener('keydown', this._onKeyDown);
     window.addEventListener('keyup', this._onKeyUp);
+    window.addEventListener('mousemove', this._onMouseMove);
     window.addEventListener('mousedown', this._onMouseDown);
+    window.addEventListener('mouseup', this._onMouseUp);
   }
 
-  down(code) { return this.keys.has(code); }
-  lastPressed() { return this.lastCode; }
-  any(...codes) { return codes.some((c) => this.keys.has(c)); }
-
-  // Edge-triggered: true once, then cleared by endFrame().
-  pressed(code) { return this._pressed.has(code); }
-
-  endFrame() {
-    this._pressed.clear();
-    this.clicked = false;
-  }
-
-  // Movement axes, -1..1. `forward` is W/Up, `strafe` is A/D or arrows.
-  moveAxes() {
-    const f = (this.down('KeyW') || this.down('ArrowUp') ? 1 : 0)
-      - (this.down('KeyS') || this.down('ArrowDown') ? 1 : 0);
-    const s = (this.down('KeyD') || this.down('ArrowRight') ? 1 : 0)
-      - (this.down('KeyA') || this.down('ArrowLeft') ? 1 : 0);
-    return { forward: f, strafe: s };
+  isDown(key) { return this.held.has(key); }
+  wasPressed(key) { return this.pressed.has(key); }
+  // Call once per frame after the game has read the input.
+  endFrame() { this.pressed.clear(); this.mouse.clicked = false; }
+  clearAll() { this.held.clear(); this.pressed.clear(); }
+  lastPressed() {
+    if (this.pressed.size === 0) return null;
+    return [...this.pressed].pop();
   }
 }

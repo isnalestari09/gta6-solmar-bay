@@ -1,103 +1,69 @@
-// Solmar Bay — shared constants, seeded RNG and mission definitions.
-// Everything deterministic from a seed so staged screenshots and playtests
-// reproduce exactly.
+// Solmar Bay — shared constants, seeded random, story data.
+// Every number here is part of the game's own design: a coastal city
+// on a 5x5 road grid, eight story missions, four radio stations.
 
 export const WORLD = {
-  size: 420,          // playable square, metres
-  roadGap: 60,        // distance between road centrelines
+  half: 200, // city extends -200..200 on x and z
+  roadGap: 80, // roads every 80 units
   roadWidth: 12,
-  wall: 200,          // half-size of the playable area
+  beachZ: 185, // sand strip starts here
+  seaZ: 235,
 };
 
-export const PLAYER = {
-  walkSpeed: 9,
-  runSpeed: 13,
-  radius: 0.7,
-  maxHealth: 100,
-  punchDamage: 25,
-  shootDamage: 34,
-  ammoStart: 60,
-};
+export const ROADS = [-160, -80, 0, 80, 160];
 
-export const CAR = {
-  maxSpeed: 42,       // m/s, arcade feel
-  accel: 22,
-  brake: 34,
-  steer: 1.9,
-  reverseSpeed: 12,
-};
-
-export const ECONOMY = {
-  coinValue: 50,
-  taxiFare: 60,
-  totalCoins: 12,
-};
-
-// Deterministic RNG (mulberry32) — same seed, same city, same traffic.
+// Seeded RNG so staged screenshots and playtests are deterministic.
 export function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {
-    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
     let t = Math.imul(a ^ (a >>> 15), 1 | a);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
 
-export function pick(rng, arr) {
-  return arr[Math.floor(rng() * arr.length)];
-}
+export const PALETTE = {
+  asphalt: 0x2e3138,
+  sidewalk: 0x8d9299,
+  grass: 0x4d7a45,
+  sand: 0xd9c28a,
+  sea: 0x2f7fb8,
+  buildingA: 0xc9a06a,
+  buildingB: 0x7fa3b8,
+  buildingC: 0xb87f8a,
+  buildingD: 0x8fa06a,
+  plaza: 0xb9b3a4,
+  carColors: [0xc23b2e, 0x2e6fc2, 0xe8c33a, 0x3aa655, 0xeeeeee, 0x222222, 0x7a4fb5],
+};
 
-// The eight story missions. `target` is a world position; `kind` tells the
-// mission system what counts as progress.
-// Revision 2: mission 8 is the epilogue chase; payouts rebalanced (+$25–$100
-// on missions 2–7) so the late game pays better without changing mission 1.
+// The story: Dani Reyes, getaway driver, comes home to Solmar Bay to buy
+// his sister Lila's freedom from the Coral Kings. Each mission pays cash;
+// the total buys her freedom in the epilogue.
 export const MISSIONS = [
-  {
-    id: 1, name: 'First Job', pay: 150, kind: 'goto',
-    brief: 'Dani is back in Solmar Bay. Drive to the docks and meet Rico.',
-    target: [-180, -150], hint: 'Follow the gold beacon to the docks.',
-  },
-  {
-    id: 2, name: "Lila's Letter", pay: 225, kind: 'goto',
-    brief: 'Lila left a letter at the cafe. Walk over and pick it up.',
-    target: [90, -60], hint: 'The cafe is on the east side, past the plaza.',
-  },
-  {
-    id: 3, name: 'Taxi Shift', pay: 375, kind: 'fares',
-    brief: 'Earn cash the honest way: pick up 3 fares around the city.',
-    target: [-30, 60], hint: 'Drive to a fare marker, wait for the rider, then drive them home.',
-  },
-  {
-    id: 4, name: 'The Getaway', pay: 550, kind: 'escape',
-    brief: 'The Coral Kings tipped off the cops. Lose a 3-star wanted level, then reach the safehouse.',
-    target: [180, 150], hint: 'Outrun the police until the stars fade, then go to the safehouse.',
-  },
-  {
-    id: 5, name: 'Coral Kings Drop', pay: 850, kind: 'goto',
-    brief: 'Deliver the package to the warehouse — and keep the cops off your tail.',
-    target: [-150, 120], hint: 'The warehouse is in the north-west corner.',
-  },
-  {
-    id: 6, name: 'Coin Run', pay: 1250, kind: 'coins',
-    brief: 'Six sunset coins are hidden around Solmar Bay. Find them all.',
-    target: [0, 0], hint: 'Coins glow gold. Check the beach, the plaza and the rooftops\' edges.',
-  },
-  {
-    id: 7, name: "Buy Lila's Freedom", pay: 2600, kind: 'finale',
-    brief: 'You have the money. Drive to the Coral Kings compound and buy Lila back.',
-    target: [150, -120], hint: 'The compound is in the south-east. Finish this.',
-  },
-  {
-    id: 8, name: 'One Last Chase', pay: 1000, kind: 'escape',
-    brief: 'Lila is free, but the Coral Kings send one last crew. Lose a 3-star wanted level, then reach the north plaza to disappear for good.',
-    target: [90, 90], hint: 'Outrun the crew until the stars fade, then slip away at the north plaza.',
-  },
+  { id: 1, name: 'Pulang Kampung', pay: 150, target: [-160, -80], text: 'Temui Maro di persimpangan barat. Dia butuh sopir.' },
+  { id: 2, name: 'Antar Paket', pay: 225, target: [80, -160], text: 'Antar paket ke gudang utara. Jangan ditanya isinya.' },
+  { id: 3, name: 'Taksi Malam', pay: 375, target: [-80, 80], text: 'Jadi taksi semalam. Penumpang bayar tunai.' },
+  { id: 4, name: 'Utang Lama', pay: 550, target: [160, 0], text: 'Tagih utang dari Bos Kadal di dermaga timur.' },
+  { id: 5, name: 'Pelarian', pay: 850, target: [0, 160], text: 'Bawa Lila kabur dari markas Coral Kings.' },
+  { id: 6, name: 'Balas Dendam', pay: 1250, target: [-160, 160], text: 'Ambil kembali mobil Dani yang disita.' },
+  { id: 7, name: 'Tebusan', pay: 2600, target: [80, 80], text: 'Serahkan uang tebusan di menara Coral Kings.' },
+  { id: 8, name: 'Satu Kejar Terakhir', pay: 1000, target: [120, 120], text: 'Lepas dari kejaran polisi, lalu sampai ke plaza utara.' },
 ];
 
-export const RADIO_STATIONS = [
-  { name: 'SOLMAR FM', desc: 'Sunset synth — warm pads and slow arpeggios' },
-  { name: 'CORAL BEATS', desc: 'Driving bass — punchy synthwave for the chase' },
-  { name: 'PALM RADIO', desc: 'Late-night lo-fi — soft keys and vinyl crackle' },
-  { name: 'BAYWAVE FM', desc: 'Midnight baywave — dreamy pads and slow four-on-the-floor' },
+export const COINS = [
+  [-160, -160], [-80, -160], [0, -160], [80, -160], [160, -160],
+  [-160, 0], [160, 0], [-160, 160], [0, 160], [160, 160],
+  [-80, -80], [80, 80],
 ];
+
+export const RADIOS = [
+  { name: 'SOLMAR FM', hue: 'pop', bpm: 112 },
+  { name: 'PELABUHAN 88', hue: 'dangdut', bpm: 96 },
+  { name: 'OMBak 101', hue: 'chill', bpm: 76 },
+  { name: 'BAYWAVE FM', hue: 'synth', bpm: 128 },
+];
+
+export const SAVE_KEY = 'solmar-bay.save.v2';
+export const SAVE_VERSION = 2;
