@@ -32,11 +32,17 @@ export function makePlayerMesh() {
     g.add(leg);
   }
   const armMat = new THREE.MeshLambertMaterial({ color: 0x2a4a8a });
+  const arms = [];
   for (const x of [-0.55, 0.55]) {
     const arm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.9, 0.2), armMat);
     arm.position.set(x, 1.0, 0);
+    // Pivot the arm at the shoulder so a punch can swing it forward.
+    arm.geometry.translate(0, -0.35, 0);
+    arm.position.y = 1.35;
     g.add(arm);
+    arms.push(arm);
   }
+  g.userData.arms = arms;
   return g;
 }
 
@@ -79,6 +85,12 @@ export class Player {
     }
     this.mesh.position.set(this.x, Math.abs(Math.sin(this.walkPhase)) * 0.05, this.z);
     this.mesh.rotation.y = this.heading;
+    // Lean into the run: the faster Dani moves, the further he pitches forward.
+    this.mesh.rotation.x = clamp(this.speed * 0.012, 0, 0.14);
+    // Punch swing: both arms snap forward while the punch is active, then
+    // relax back to Dani's sides.
+    const swing = this.punchTimer > 0 ? Math.sin((0.25 - this.punchTimer) / 0.25 * Math.PI) * 1.5 : 0;
+    for (const arm of this.mesh.userData.arms ?? []) arm.rotation.x = -swing;
   }
 
   punch() {

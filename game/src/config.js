@@ -40,13 +40,26 @@ export const WANTED = {
   spawnRadiusMin: 38,
   spawnRadiusMax: 62,
   bustTouchSeconds: 1.4, // how long a cop must touch Dani on foot to bust him
+  policeRamDamage: 14, // health per second a ramming cop strips from Dani's car
 };
 
 export const ECONOMY = {
+  startCash: 250,
   coinValue: 25,
   taxiFareMin: 40,
   taxiFareMax: 120,
   bustFine: 0.1,
+};
+
+// Chase-camera framing, so the camera feel can be tuned in one place.
+export const CAMERA = {
+  onFootDist: 12,
+  onFootHeight: 5,
+  carDist: 16,
+  carHeight: 6.5,
+  lookHeight: 2.2,
+  menuOrbitRadius: 55,
+  menuOrbitHeight: 30,
 };
 
 export const MISSION_PAYOUTS = [150, 300, 450, 700, 950, 1300, 1800, 2600];

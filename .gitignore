@@ -4,3 +4,8 @@ out/
 .DS_Store
 *.log
 *.tmp
+*.orig
+*.swp
+*.tsbuildinfo
+playtest-*.log
+.idea/

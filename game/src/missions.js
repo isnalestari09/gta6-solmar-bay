@@ -99,6 +99,18 @@ export class MissionRunner {
       const d = Math.round(dist2d(game.player.x, game.player.z, s.x, s.z));
       return `${s.text} — ${d}m`;
     }
+    // Count-based steps show live progress, e.g. "Collect 6 sunset coins — 4/6".
+    if (s.type === 'coins') {
+      const done = game.coinsCollected - this.coinsAtStart;
+      return `${s.text} — ${Math.min(done, s.count)}/${s.count}`;
+    }
+    if (s.type === 'taxi') {
+      const done = game.faresDone - this.faresAtStart;
+      return `${s.text} — ${Math.min(done, s.count)}/${s.count}`;
+    }
+    if (s.type === 'heat') {
+      return `${s.text} — ${game.wanted.stars}/${s.stars} stars`;
+    }
     return s.text;
   }
 
@@ -148,6 +160,7 @@ export class MissionRunner {
     if (!this.active) return;
     this.active = false;
     this.failed = true;
+    this.heatForced = false;
     this.onEvent('mission-fail', { mission: this.current, reason });
   }
 

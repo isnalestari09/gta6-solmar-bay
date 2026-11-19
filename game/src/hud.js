@@ -9,6 +9,7 @@ let toastTimer = null;
 export function initHud() {
   els = {
     cash: document.getElementById('hud-cash'),
+    coins: document.getElementById('hud-coins'),
     stars: document.getElementById('hud-stars'),
     objective: document.getElementById('hud-objective'),
     missionName: document.getElementById('hud-mission'),
@@ -48,6 +49,7 @@ export function showBanner(text, ms = 3000) {
 export function updateHud(game) {
   if (!els.cash) return;
   els.cash.textContent = `$${game.cash.toLocaleString('en-US')}`;
+  if (els.coins) els.coins.textContent = `◉ ${game.coinsCollected}/12 coins`;
   els.stars.textContent = '★'.repeat(game.wanted.stars) + '☆'.repeat(5 - game.wanted.stars);
   els.stars.style.color = game.wanted.stars > 0 ? '#ffd800' : '#888888';
   const m = game.missions.current;
@@ -59,7 +61,7 @@ export function updateHud(game) {
     els.objective.textContent = 'Free roam: collect coins, run fares, cause chaos';
   } else {
     els.missionName.textContent = 'FREE ROAM';
-    els.objective.textContent = `Next mission: ${MISSIONS_NEXT(game)} — press M to start`;
+    els.objective.textContent = `Next mission: ${MISSIONS_NEXT(game)} — press M to start · Best wanted: ${'★'.repeat(game.bestWanted)}${'☆'.repeat(5 - game.bestWanted)}`;
   }
   els.radio.textContent = game.audioMuted ? 'RADIO: MUTED' : `♪ ${game.station.name} — ${game.station.desc}`;
   const speed = game.player.inCar ? Math.abs(game.player.inCar.speed) * 2.4 : Math.abs(game.player.speed) * 2.4;
@@ -104,6 +106,12 @@ export function drawMinimap(game) {
     const [mx, my] = toMap(coin.x, coin.z);
     g.beginPath(); g.arc(mx, my, 2.5, 0, Math.PI * 2); g.fill();
   }
+  // Docks and escape boat, south edge.
+  const [dx, dy] = toMap(0, 200);
+  g.fillStyle = '#4a9ac4';
+  g.fillRect(dx - 5, dy - 2, 10, 4);
+  g.fillStyle = '#e8e0cc';
+  g.fillRect(dx - 2, dy - 5, 4, 3);
   // Mission marker.
   const target = missionTarget(game);
   if (target) {

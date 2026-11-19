@@ -2,10 +2,10 @@
 // player, wanted, missions, HUD, audio and save into one playable game.
 
 import * as THREE from 'three';
-import { WORLD, CAR, ECONOMY, clamp, dist2d, rand, randPick } from './config.js';
+import { WORLD, CAR, CAMERA, ECONOMY, clamp, dist2d, rand, randPick } from './config.js';
 import { buildCity, resolveCollisions } from './city.js';
 import { spawnParkedCars, spawnTraffic, updateTraffic, driveCar } from './vehicles.js';
-import { spawnPedestrians, updatePedestrians } from './pedestrians.js';
+import { spawnPedestrians, updatePedestrians, scarePedestrians } from './pedestrians.js';
 import { Player } from './player.js';
 import { Wanted } from './wanted.js';
 import { MissionRunner, MISSIONS } from './missions.js';
@@ -15,7 +15,7 @@ import {
 } from './hud.js';
 import {
   initAudio, resumeAudio, updateAudio, setStation, cycleStation, toggleMute,
-  playCoin, playPunch, playCrash, playCash, playMission, playFail, playBusted, playEnterCar,
+  playCoin, playPunch, playCrash, playCash, playMission, playStep, playFail, playBusted, playEnterCar,
   setEngine, setSiren, currentStation,
 } from './audio.js';
 import { loadSave, writeSave, wipeSave } from './save.js';
@@ -99,6 +99,7 @@ function onMissionEvent(kind, data) {
     playMission();
   } else if (kind === 'mission-step') {
     showToast(data.text, 3000);
+    playStep();
   } else if (kind === 'mission-complete') {
     showBanner(`MISSION COMPLETE — +$${data.payout}`);
     showToast(`Mission complete! +$${data.payout}`, 3600);
@@ -186,7 +187,7 @@ document.getElementById('btn-busted').addEventListener('click', () => {
   game.wanted.clear();
 });
 
-showMenu(save.missionsDone > 0 || save.cash !== 250);
+showMenu(save.missionsDone > 0 || save.cash !== ECONOMY.startCash);
 installDebugHooks(game);
 if (game.pendingShot !== null) {
   const n = game.pendingShot;
@@ -239,6 +240,8 @@ function tryPunch() {
   if (!game.player.punch()) return;
   playPunch();
   const reach = game.player.punchReach();
+  // The crowd scatters from a punch even when nobody is in range.
+  scarePedestrians(game.peds, game.player.x, game.player.z);
   for (const p of game.peds) {
     if (dist2d(p.x, p.z, reach.x, reach.z) < 1.6) {
       p.targetX = p.x + (p.x - game.player.x) * 4;
@@ -279,8 +282,8 @@ function updateCamera(dt) {
   game.camYaw -= Input.mouseDX * 0.005;
   game.camPitch = clamp(game.camPitch + Input.mouseDY * 0.003, 0.08, 1.1);
   const inCar = !!game.player.inCar;
-  const dist = inCar ? 16 : 12;
-  const height = inCar ? 6.5 : 5;
+  const dist = inCar ? CAMERA.carDist : CAMERA.onFootDist;
+  const height = inCar ? CAMERA.carHeight : CAMERA.onFootHeight;
   const px = game.player.x;
   const pz = game.player.z;
   const tx = px - Math.sin(game.camYaw) * dist;
@@ -296,7 +299,7 @@ function updateCamera(dt) {
     return;
   }
   camera.position.set(tx + sx, height + sy, tz);
-  camera.lookAt(px, 2.2, pz);
+  camera.lookAt(px, CAMERA.lookHeight, pz);
   game.shake = Math.max(0, game.shake - dt * 2.2);
 }
 
@@ -322,7 +325,11 @@ function frame() {
   if (!game.started) {
     // Menu backdrop: slow orbit around Plaza del Sol.
     const t = performance.now() / 1000;
-    camera.position.set(92 + Math.sin(t * 0.08) * 55, 30, 92 + Math.cos(t * 0.08) * 55);
+    camera.position.set(
+      92 + Math.sin(t * 0.08) * CAMERA.menuOrbitRadius,
+      CAMERA.menuOrbitHeight,
+      92 + Math.cos(t * 0.08) * CAMERA.menuOrbitRadius
+    );
     camera.lookAt(92, 2, 92);
     renderer.render(scene, camera);
     Input.clearFrame();
@@ -346,7 +353,7 @@ function frame() {
 
   // Keys that act once per press.
   if (Input.wasPressed('KeyE')) tryEnterCar();
-  if (Input.wasPressed('KeyF')) tryPunch();
+  if (Input.wasPressed('KeyF') || Input.wasPressed('Space')) tryPunch();
   if (Input.wasPressed('KeyM')) {
     if (!game.missions.active) {
       if (game.missionsDone >= 8) {

@@ -39,12 +39,33 @@ const server = createServer(async (req, res) => {
       return;
     }
     const data = await readFile(file);
-    res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream' });
+    // Never cache during playtesting: a stale bundle hides the latest edit.
+    const headers = {
+      'content-type': TYPES[extname(file)] ?? 'application/octet-stream',
+      'cache-control': 'no-store',
+    };
+    // HEAD answers headers only, so uptime probes never pull the whole file.
+    if (req.method === 'HEAD') {
+      res.writeHead(200, { ...headers, 'content-length': data.length });
+      res.end();
+      return;
+    }
+    res.writeHead(200, headers);
     res.end(data);
   } catch {
+    console.log(`404 ${req.method} ${req.url ?? '/'}`);
     res.writeHead(404);
     res.end('not found');
   }
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Solmar Bay: port ${port} is already in use — stop the other server or set PORT to something else.`);
+  } else {
+    console.error('Solmar Bay server error:', err.message);
+  }
+  process.exit(1);
 });
 
 server.listen(port, () => {

@@ -145,6 +145,12 @@ export function playMission() {
   blip(784, 0.3, 'triangle', 0.55, 0.24);
 }
 
+// Light two-note chime when a mission advances to its next step.
+export function playStep() {
+  blip(659, 0.1, 'triangle', 0.4);
+  blip(880, 0.18, 'triangle', 0.4, 0.09);
+}
+
 export function playFail() {
   blip(392, 0.2, 'sawtooth', 0.35);
   blip(311, 0.35, 'sawtooth', 0.35, 0.16);
@@ -172,6 +178,8 @@ export function setEngine(speed01, driving) {
 export function setSiren(on) {
   if (!ctx) return;
   sirenGain.gain.setTargetAtTime(on ? 0.045 : 0, ctx.currentTime, 0.15);
+  // Duck the radio under a wailing siren so the chase still reads clearly.
+  if (musicGain) musicGain.gain.setTargetAtTime(on ? 0.09 : 0.16, ctx.currentTime, 0.2);
 }
 
 export function updateAudio(dt) {

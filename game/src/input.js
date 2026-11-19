@@ -44,10 +44,19 @@ export const Input = {
   sprinting() {
     return held.has('ShiftLeft') || held.has('ShiftRight');
   },
+  get isDragging() {
+    return dragging;
+  },
   clearFrame() {
     pressed.clear();
     mouseDX = 0;
     mouseDY = 0;
+  },
+  // Drop every held and just-pressed key (tab switch, window blur): a key
+  // held at hide time would otherwise stay stuck forever.
+  flush() {
+    held.clear();
+    pressed.clear();
   },
   onAnyKey(fn) {
     anyKeyCallback = fn;
@@ -61,19 +70,19 @@ export function initInput(canvas) {
     pressed.add(e.code);
     if (anyKeyCallback) anyKeyCallback(e.code);
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
-      e.preventDefault();
+      e.preventDefault(); // Space is the punch key: stop it scrolling the page
     }
   });
   window.addEventListener('keyup', (e) => {
     held.delete(e.code);
   });
   window.addEventListener('blur', () => {
-    held.clear();
+    Input.flush();
   });
   // A hidden tab keeps firing no keyups, so a key held at hide time would
   // stay stuck forever. Clear the held set when the page is hidden too.
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) held.clear();
+    if (document.hidden) Input.flush();
   });
   canvas.addEventListener('mousedown', (e) => {
     dragging = true;

@@ -13,6 +13,7 @@
   #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; z-index: 5; }
   #hud-top-left { position: absolute; top: 14px; left: 16px; text-shadow: 0 2px 4px #000; }
   #hud-cash { font-size: 30px; font-weight: 800; color: #7dff8a; }
+  #hud-coins { font-size: 15px; font-weight: 700; color: #ffd800; margin-top: 2px; }
   #hud-stars { font-size: 22px; letter-spacing: 3px; margin-top: 2px; }
   #hud-top-right { position: absolute; top: 14px; right: 16px; text-align: right; text-shadow: 0 2px 4px #000; max-width: 340px; }
   #hud-mission { font-size: 15px; font-weight: 700; color: #ffd800; }
@@ -46,6 +47,7 @@
 <div id="hud">
   <div id="hud-top-left">
     <div id="hud-cash">$250</div>
+    <div id="hud-coins">◉ 0/12 coins</div>
     <div id="hud-stars">☆☆☆☆☆</div>
   </div>
   <div id="hud-top-right">
@@ -56,7 +58,7 @@
     <div id="hud-speed"></div>
     <div id="hud-health"></div>
     <div id="hud-radio">♪ BAYWAVE FM — Synthwave</div>
-    <div>WASD move/drive · E enter car · F punch · Shift sprint · P pause<br>M mission · T taxi fare · R radio · 1-4 stations · N mute</div>
+    <div>WASD move/drive · E enter car · F / Space punch · Shift sprint · P pause<br>M mission · T taxi fare · R radio · 1-4 stations · N mute</div>
   </div>
   <canvas id="minimap" width="180" height="180"></canvas>
   <div id="hud-toast"></div>
@@ -69,27 +71,27 @@
     <p id="menu-story">Dani Reyes, getaway driver, is back in coastal Solmar Bay. The Coral Kings hold his sister Lila — and the price of her freedom is $2,600. Steal cars, outrun the law, run fares and jobs across the city, and bring her home.</p>
     <div class="controls">
       WASD — walk / drive &nbsp;·&nbsp; Mouse drag — camera<br>
-      Shift — sprint &nbsp;·&nbsp; E — enter / leave car &nbsp;·&nbsp; F — punch<br>
+      Shift — sprint &nbsp;·&nbsp; E — enter / leave car &nbsp;·&nbsp; F / Space — punch<br>
       M — next mission &nbsp;·&nbsp; T — taxi fare (in the yellow taxi)<br>
       R / 1-4 — radio stations &nbsp;·&nbsp; N — mute &nbsp;·&nbsp; P — pause
     </div>
     <br>
-    <button class="btn" id="btn-new">NEW GAME</button>
-    <button class="btn secondary" id="btn-continue">CONTINUE</button>
+    <button class="btn" id="btn-new" aria-label="Start a new game">NEW GAME</button>
+    <button class="btn secondary" id="btn-continue" aria-label="Continue your saved game">CONTINUE</button>
   </div>
 </div>
 <div id="pause" class="overlay hidden">
   <div class="panel">
     <h1>PAUSED</h1>
     <p>Solmar Bay waits for no one. Well — except now.</p>
-    <button class="btn" id="btn-resume">RESUME</button>
+    <button class="btn" id="btn-resume" aria-label="Resume the game">RESUME</button>
   </div>
 </div>
 <div id="busted" class="overlay hidden">
   <div class="panel">
     <h1>BUSTED</h1>
     <p id="busted-text">The Solmar Bay PD caught up with you.</p>
-    <button class="btn" id="btn-busted">BACK TO THE STREETS</button>
+    <button class="btn" id="btn-busted" aria-label="Return to the streets">BACK TO THE STREETS</button>
   </div>
 </div>
 <script type="module" src="./src/main.js"></script>

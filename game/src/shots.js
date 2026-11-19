@@ -16,7 +16,13 @@ export function stageShot(game, n) {
   const shot = SHOTS[n];
   if (!shot) return null;
   game.shotName = shot.name;
+  game.errors.length = 0; // a staged shot starts with a clean error slate
   game.hideMenuForShot();
+  if (shot.state === 'menu') {
+    // Face the plaza from the south-east so Dani, the fountain and the
+    // sunset skyline share the frame.
+    game.camYaw = Math.PI * 0.75;
+  }
   if (shot.state === 'drive') {
     const car = game.parked[0];
     game.player.enterCar(car);
@@ -29,6 +35,7 @@ export function stageShot(game, n) {
     game.player.teleport(-92, -70, 0);
     game.wanted.heat = 300;
     game.wanted.stars = 3;
+    game.wanted.engaged = true; // staged police count as already arrived
     const car = game.parked[1];
     game.player.enterCar(car);
     car.x = -92;
@@ -48,7 +55,7 @@ export function stageShot(game, n) {
 export function installDebugHooks(game) {
   window.__solmar = {
     game,
-    version: 'solmar-bay-3',
+    version: 'solmar-bay-4',
     get state() {
       return {
         cash: game.cash,

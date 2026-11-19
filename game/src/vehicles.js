@@ -33,6 +33,17 @@ export function makeCarMesh(color, kind = 'sedan') {
     l.position.set(x, 0.7, 2.21);
     g.add(l);
   }
+  // Rear lights: brighten when the car brakes or reverses, so a chase
+  // reads at a glance from behind.
+  const rearMat = new THREE.MeshLambertMaterial({ color: 0xaa2222, emissive: 0x330000 });
+  const rearLights = [];
+  for (const x of [-0.7, 0.7]) {
+    const l = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.2, 0.1), rearMat.clone());
+    l.position.set(x, 0.7, -2.21);
+    g.add(l);
+    rearLights.push(l);
+  }
+  g.userData.rearLights = rearLights;
   if (kind === 'taxi') {
     const sign = new THREE.Mesh(
       new THREE.BoxGeometry(0.9, 0.3, 0.5),
@@ -82,6 +93,11 @@ export function driveCar(car, throttle, steer, dt, colliders) {
   if (car.speed < target) car.speed = Math.min(target, car.speed + rate * dt);
   else if (car.speed > target) car.speed = Math.max(target, car.speed - rate * dt);
   if (throttle < 0) car.speed = Math.max(-CAR.reverseMax, car.speed);
+  // Brake / reverse lights: glow while slowing down or backing up.
+  const braking = throttle < 0 || (throttle === 0 && Math.abs(car.speed) > 0.5);
+  for (const l of car.mesh.userData.rearLights ?? []) {
+    l.material.emissive.setHex(car.speed < -0.5 ? 0xffffff : braking ? 0xcc1111 : 0x330000);
+  }
   const speedFactor = clamp(Math.abs(car.speed) / 14, 0.25, 1);
   car.heading += steer * CAR.turnRate * speedFactor * dt * Math.sign(car.speed || 1);
   const nx = car.x + Math.sin(car.heading) * car.speed * dt;
@@ -114,7 +130,8 @@ export function spawnParkedCars(scene) {
     for (const x of [-120, -70, -20, 30, 80, 130]) spots.push([x, c + 7.5, Math.PI / 2]);
   }
   for (let i = 0; i < 28 && i < spots.length; i++) {
-    const [x, z, h] = spots[Math.floor(rng() * spots.length)];
+    // Draw without replacement: two cars must never share one parking spot.
+    const [x, z, h] = spots.splice(Math.floor(rng() * spots.length), 1)[0];
     const color = randPick(CAR_COLORS);
     const mesh = makeCarMesh(color);
     scene.add(mesh);

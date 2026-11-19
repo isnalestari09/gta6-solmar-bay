@@ -4,7 +4,7 @@
 // buildDossier from vendor/makefun-game.ts, exactly as the scorer rebuilds it.
 
 import { buildDossier } from './vendor/makefun-game.ts';
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync, readdirSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,7 +20,16 @@ function copyTree(src, dest) {
 const gameSrc = join(repoRoot, 'game');
 const shotsSrc = join(repoRoot, 'screenshots');
 if (!existsSync(gameSrc)) throw new Error('main.ts: game/ is missing from the repository');
+if (!existsSync(join(gameSrc, 'index.html'))) throw new Error('main.ts: game/index.html is missing from the repository');
 if (!existsSync(shotsSrc)) throw new Error('main.ts: screenshots/ is missing from the repository');
+// The dossier only accepts up to 4 screenshots of 256 KiB each: fail loudly
+// here instead of shipping a build the scorer would reject.
+const shotFiles = readdirSync(shotsSrc).filter((f) => /\.(jpe?g|png)$/i.test(f)).sort();
+if (shotFiles.length !== 4) throw new Error(`main.ts: expected 4 screenshots, found ${shotFiles.length}`);
+for (const f of shotFiles) {
+  const size = statSync(join(shotsSrc, f)).size;
+  if (size > 262144) throw new Error(`main.ts: screenshot ${f} is ${size} bytes, over the 256 KiB limit`);
+}
 
 rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
@@ -48,4 +57,5 @@ function countFiles(dir) {
 const hash = createHash('sha256').update(dossier).digest('hex');
 console.log(`Solmar Bay dossier written: ${dossier.length} bytes to ${outDir}/dossier.json`);
 console.log(`dossier sha256: ${hash}`);
+console.log(`screenshots: ${shotFiles.join(', ')}`);
 console.log(`game files: ${countFiles(join(outDir, 'game'))}, screenshots: ${countFiles(join(outDir, 'screenshots'))}`);

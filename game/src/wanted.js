@@ -52,6 +52,10 @@ export class Wanted {
     if (this.heat > 0) {
       this.heat = Math.max(0, this.heat - decay);
       this.stars = this.heat <= 0 ? 0 : Math.min(WANTED.maxStars, Math.floor(this.heat / WANTED.heatPerStar) + 1);
+      // Once the heat fully clears, the episode is over: re-arm the
+      // engaged flag so the next wanted level has to earn its hiding
+      // state with a real police arrival all over again.
+      if (this.stars === 0) this.engaged = false;
     }
     const wantPolice = this.stars > 0 ? Math.min(6, this.stars + WANTED.policePerStar) : 0;
     this.spawnTimer -= dt;
@@ -64,7 +68,9 @@ export class Wanted {
       this.police.push(makePoliceCar(this.scene, x, z));
     }
     if (this.police.length > wantPolice) {
-      const extra = this.police.pop();
+      // Drop the oldest patrol car: it is usually the farthest away and
+      // least engaged, while the fresh arrivals are the ones closing in.
+      const extra = this.police.shift();
       this.scene.remove(extra.mesh);
     }
     // Police chase and ram. On foot, a touch starts the bust clock, and the
@@ -76,7 +82,7 @@ export class Wanted {
       const { dist } = updatePoliceCar(p, player.x, player.z, dt, this.colliders);
       if (!player.inCar && dist < 2.6) touching = true;
       if (player.inCar && dist < 3.4) {
-        player.inCar.health -= 14 * dt;
+        player.inCar.health -= WANTED.policeRamDamage * dt;
         if (player.inCar.health <= 0) busted = true;
       }
     }

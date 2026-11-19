@@ -58,7 +58,9 @@ export function spawnPedestrians(scene) {
 export function updatePedestrians(peds, dt, playerX, playerZ, wantedStars, colliders, cars = []) {
   for (const p of peds) {
     const dPlayer = dist2d(p.x, p.z, playerX, playerZ);
-    p.fleeing = wantedStars > 0 && dPlayer < 26;
+    // A punch keeps locals fleeing for a few seconds even after the heat
+    // drops, so the crowd does not instantly calm down mid-scare.
+    p.fleeing = (wantedStars > 0 && dPlayer < 26) || performance.now() < (p.fleeUntil || 0);
     let tx = p.targetX;
     let tz = p.targetZ;
     if (p.fleeing) {
@@ -94,5 +96,20 @@ export function updatePedestrians(peds, dt, playerX, playerZ, wantedStars, colli
     p.walkPhase += dt * speed * 3;
     p.mesh.position.set(p.x, Math.abs(Math.sin(p.walkPhase)) * 0.06, p.z);
     p.mesh.rotation.y = p.heading;
+  }
+}
+
+/** A punch nearby sends locals running: give every pedestrian in range a
+ * flee target away from the punch, so the crowd reacts to Dani's violence
+ * even before the wanted level catches up. */
+export function scarePedestrians(peds, x, z, radius = 14) {
+  for (const p of peds) {
+    if (dist2d(p.x, p.z, x, z) < radius) {
+      const away = Math.atan2(p.x - x, p.z - z);
+      p.targetX = clamp(p.x + Math.sin(away) * 30, -WORLD.half + 8, WORLD.half - 8);
+      p.targetZ = clamp(p.z + Math.cos(away) * 30, -WORLD.half + 8, WORLD.half - 8);
+      p.fleeing = true;
+      p.fleeUntil = performance.now() + 4000;
+    }
   }
 }

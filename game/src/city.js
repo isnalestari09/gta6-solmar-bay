@@ -182,9 +182,49 @@ export function buildCity(scene) {
   );
   cabin.position.set(-0.5, 3.2, 0);
   boat.add(cabin);
+  // Mast and sail, so the escape boat reads as a boat from the chase cam.
+  const mast = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.14, 0.14, 5, 8),
+    new THREE.MeshLambertMaterial({ color: 0x6a4a2a })
+  );
+  mast.position.set(1.5, 5, 0);
+  boat.add(mast);
+  const sail = new THREE.Mesh(
+    new THREE.BoxGeometry(0.1, 3.4, 2.2),
+    new THREE.MeshLambertMaterial({ color: 0xf5e9c8 })
+  );
+  sail.position.set(1.5, 4.4, 0);
+  boat.add(sail);
   boat.position.set(0, 0.4, half + 2);
   group.add(boat);
   colliders.push({ x: 0, z: half - 4, hx: 20, hz: 6 });
+
+  // Lighthouse at the east end of the docks: a night landmark for the
+  // epilogue chase, with a glowing lamp the player can spot from anywhere.
+  const lighthouse = new THREE.Group();
+  const tower = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.2, 3, 16, 12),
+    new THREE.MeshLambertMaterial({ color: 0xe8e0cc })
+  );
+  tower.position.y = 8;
+  lighthouse.add(tower);
+  const band = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.5, 2.5, 2.2, 12),
+    new THREE.MeshLambertMaterial({ color: 0xc23a2a })
+  );
+  band.position.y = 11;
+  lighthouse.add(band);
+  const lamp = new THREE.Mesh(
+    new THREE.SphereGeometry(1.3, 12, 10),
+    new THREE.MeshLambertMaterial({ color: 0xffe9a8, emissive: 0xffcc33 })
+  );
+  lamp.position.y = 17;
+  lighthouse.add(lamp);
+  lighthouse.position.set(28, 0, half - 6);
+  group.add(lighthouse);
+  colliders.push({ x: 28, z: half - 6, hx: 3.4, hz: 3.4 });
+  addPalm(group, 22, half - 14);
+  addPalm(group, 36, half - 16);
 
   // 12 hidden sunset coins, tucked around the city.
   const coinSpots = [
