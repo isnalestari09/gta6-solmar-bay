@@ -1,195 +1,241 @@
-// Solmar Bay — the story: 8 missions for Dani Reyes, who came home to buy his
-// sister Lila's freedom from the Coral Kings. Fail keeps your cash; retry is free.
+// Solmar Bay — the story: eight missions that earn Dani the $2,600 to buy
+// his sister Lila's freedom from the Coral Kings. Each mission is a list of
+// steps — go somewhere, wait, punch, finish a fare, or outrun the law —
+// with a glowing marker in the world and live progress on the HUD.
 
-import { MISSION_PAYOUTS, dist2d } from './config.js';
+import * as THREE from 'three';
+import { DOCKS, PLAZAS, distance2D } from './config.js';
 
 export const MISSIONS = [
   {
-    id: 1, name: 'Welcome Home', payout: MISSION_PAYOUTS[0],
-    briefing: 'Dani is back in Solmar Bay. Meet old friend Marco at Plaza del Sol.',
-    steps: [{ type: 'goto', x: 92, z: 92, radius: 6, text: 'Meet Marco at Plaza del Sol' }],
-  },
-  {
-    id: 2, name: 'First Wheels', payout: MISSION_PAYOUTS[1],
-    briefing: 'Marco needs a car. Steal any parked car and bring it to the Coral Plaza garage.',
+    name: 'First Wheels', payout: 150,
+    intro: 'Dani is back in Solmar Bay. First, wheels: steal a parked car and bring it to Plaza del Sol.',
     steps: [
-      { type: 'steal', text: 'Steal a parked car (press E near one)' },
-      { type: 'drive', x: -92, z: -92, radius: 8, text: 'Drive the car to Coral Plaza' },
+      { type: 'steal', text: 'Steal a parked car — press E next to one' },
+      { type: 'goto', x: PLAZAS.sol.x, z: PLAZAS.sol.z, radius: 10, text: 'Drive the car to Plaza del Sol' },
     ],
   },
   {
-    id: 3, name: 'The Pickup', payout: MISSION_PAYOUTS[2],
-    briefing: 'Pick up a package from the docks and deliver it to the fish market.',
+    name: "Lila's Note", payout: 200,
+    intro: 'A note from Lila: meet her friend at Coral Plaza. Go on foot and wait for the contact.',
     steps: [
-      { type: 'goto', x: 0, z: 184, radius: 7, text: 'Pick up the package at the docks' },
-      { type: 'drive', x: -138, z: 46, radius: 8, text: 'Deliver it to the fish market' },
+      { type: 'goto', x: PLAZAS.coral.x, z: PLAZAS.coral.z, radius: 8, text: 'Reach Coral Plaza on foot' },
+      { type: 'wait', x: PLAZAS.coral.x, z: PLAZAS.coral.z, radius: 8, seconds: 3, text: 'Wait for the contact' },
     ],
   },
   {
-    id: 4, name: 'Heat Check', payout: MISSION_PAYOUTS[3],
-    briefing: 'The Coral Kings sent lookouts. Lose the cops, then reach the safehouse.',
+    name: 'The Drop', payout: 300,
+    intro: 'The Coral Kings want a package moved. Drive it to the docks warehouse — no questions.',
     steps: [
-      { type: 'heat', stars: 2, text: 'Draw police attention (cause trouble) to 2 stars' },
-      { type: 'lose', text: 'Lose the cops — hide until your wanted level clears' },
-      { type: 'goto', x: 138, z: -92, radius: 7, text: 'Reach the safehouse' },
+      { type: 'goto', x: 120, z: 150, radius: 8, text: 'Drive to the docks warehouse', car: true },
+      { type: 'wait', x: 120, z: 150, radius: 8, seconds: 2, text: 'Hand over the package' },
     ],
   },
   {
-    id: 5, name: 'Taxi Nights', payout: MISSION_PAYOUTS[4],
-    briefing: 'Earn honest money. Take the taxi and complete 2 fares across town.',
+    name: 'Hot Cargo', payout: 400,
+    intro: 'Two stops, one hot cargo. Pick it up at the north plaza, drop it at the east gate.',
     steps: [
-      { type: 'taxi', count: 2, text: 'Complete 2 taxi fares in the yellow taxi' },
+      { type: 'goto', x: 0, z: -120, radius: 8, text: 'Pick up the cargo at the north end' },
+      { type: 'goto', x: 160, z: 0, radius: 8, text: 'Deliver the cargo to the east gate' },
     ],
   },
   {
-    id: 6, name: 'Coin Run', payout: MISSION_PAYOUTS[5],
-    briefing: 'Lila hid her savings in sunset coins around the city. Collect 6 of them.',
-    steps: [{ type: 'coins', count: 6, text: 'Collect 6 sunset coins' }],
-  },
-  {
-    id: 7, name: 'The Exchange', payout: MISSION_PAYOUTS[6],
-    briefing: 'Bring the money to the Coral Kings at the north plaza. No tricks — they watch.',
+    name: 'Rough Crowd', payout: 500,
+    intro: 'Two hecklers at Coral Plaza are blocking the way. Show them Dani is back — with his fists.',
     steps: [
-      { type: 'drive', x: 92, z: -138, radius: 8, text: 'Drive to the north plaza exchange' },
-      { type: 'goto', x: 92, z: -138, radius: 6, text: 'Walk in and make the exchange' },
+      { type: 'punch', count: 2, text: 'Knock down 2 hecklers at Coral Plaza (F to punch)' },
     ],
   },
   {
-    id: 8, name: 'One Last Chase', payout: MISSION_PAYOUTS[7],
-    briefing: 'It was a trap. Five stars, the whole force after you — reach the boat at the docks and get Lila out.',
+    name: 'Taxi Shift', payout: 350,
+    intro: 'A cab is waiting. Take a fare: get in the yellow taxi, press T, and drive the rider home.',
     steps: [
-      { type: 'chase', text: 'Escape the police — reach the boat at the docks' },
-      { type: 'goto', x: 0, z: 200, radius: 8, text: 'Board the boat with Lila' },
+      { type: 'fare', text: 'Finish a taxi fare — get in the yellow taxi and press T' },
+    ],
+  },
+  {
+    name: 'The Exchange', payout: 600,
+    intro: 'The exchange is at the lighthouse. Go there, wait for the signal, then get to the boat.',
+    steps: [
+      { type: 'goto', x: DOCKS.lighthouse.x, z: DOCKS.lighthouse.z - 12, radius: 9, text: 'Reach the lighthouse' },
+      { type: 'wait', x: DOCKS.lighthouse.x, z: DOCKS.lighthouse.z - 12, radius: 9, seconds: 3, text: 'Wait for the signal' },
+      { type: 'goto', x: DOCKS.boat.x, z: DOCKS.boat.z - 10, radius: 9, text: 'Get to the boat at the docks' },
+    ],
+  },
+  {
+    name: 'One Last Chase', payout: 2600,
+    intro: 'It was a trap. Five stars, the whole force after you — reach the boat at the docks and get Lila out.',
+    steps: [
+      { type: 'chase', x: DOCKS.boat.x, z: DOCKS.boat.z - 10, radius: 10, text: 'Escape the police — reach the boat at the docks' },
     ],
   },
 ];
 
-export class MissionRunner {
-  constructor(onEvent) {
-    this.onEvent = onEvent;
-    this.index = 0;
-    this.step = 0;
-    this.active = false;
-    this.failed = false;
-    this.completed = false;
-    this.coinsAtStart = 0;
-    this.faresAtStart = 0;
-    this.heatForced = false;
+function makeMarker() {
+  const group = new THREE.Group();
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(2.2, 3, 24),
+    new THREE.MeshBasicMaterial({ color: 0xffd800, side: THREE.DoubleSide, transparent: true, opacity: 0.9 }),
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.15;
+  group.add(ring);
+  const beam = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.5, 0.5, 30, 8, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xffd800, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false }),
+  );
+  beam.position.y = 15;
+  group.add(beam);
+  group.visible = false;
+  return group;
+}
+
+export class MissionManager {
+  constructor(scene) {
+    this.scene = scene;
+    this.marker = makeMarker();
+    scene.add(this.marker);
+    this.activeIndex = -1;
+    this.stepIndex = 0;
+    this.stepProgress = 0;
+    this.waitTimer = 0;
+    this.punchCount = 0;
+    this.fareStarted = false;
+    this.done = false;
   }
 
-  get current() {
-    return MISSIONS[this.index] ?? null;
+  get active() {
+    return this.activeIndex >= 0 ? MISSIONS[this.activeIndex] : null;
   }
 
-  get currentStep() {
-    const m = this.current;
-    return m ? m.steps[this.step] : null;
+  get step() {
+    const mission = this.active;
+    return mission ? mission.steps[this.stepIndex] : null;
   }
 
-  /** Objective line for the HUD: the step text plus a live distance when
-   * the step has a place to go, so the player always knows how far is left. */
-  stepText(game) {
-    const s = this.currentStep;
-    if (!s) return '';
-    if (s.type === 'chase') {
-      const d = Math.round(dist2d(game.player.x, game.player.z, 0, 200));
-      return `${s.text} — ${d}m`;
-    }
-    if ((s.type === 'goto' || s.type === 'drive') && s.x !== undefined) {
-      const d = Math.round(dist2d(game.player.x, game.player.z, s.x, s.z));
-      return `${s.text} — ${d}m`;
-    }
-    // Count-based steps show live progress, e.g. "Collect 6 sunset coins — 4/6".
-    if (s.type === 'coins') {
-      const done = game.coinsCollected - this.coinsAtStart;
-      return `${s.text} — ${Math.min(done, s.count)}/${s.count}`;
-    }
-    if (s.type === 'taxi') {
-      const done = game.faresDone - this.faresAtStart;
-      return `${s.text} — ${Math.min(done, s.count)}/${s.count}`;
-    }
-    if (s.type === 'heat') {
-      return `${s.text} — ${game.wanted.stars}/${s.stars} stars`;
-    }
-    return s.text;
+  get isChaseStep() {
+    return this.step && this.step.type === 'chase';
   }
 
-  start(index, game) {
-    this.index = index;
-    this.step = 0;
-    this.active = true;
-    this.failed = false;
-    this.coinsAtStart = game.coinsCollected;
-    this.faresAtStart = game.faresDone;
-    const m = this.current;
-    this.onEvent('mission-start', m);
-    this.applyStepEffect(game);
+  start(index) {
+    this.activeIndex = index;
+    this.stepIndex = 0;
+    this.stepProgress = 0;
+    this.waitTimer = 0;
+    this.punchCount = 0;
+    this.done = false;
+    this._placeMarker();
+    return this.active;
   }
 
-  applyStepEffect(game) {
-    const s = this.currentStep;
-    if (!s) return;
-    if (s.type === 'chase') {
-      game.wanted.heat = 5 * 100;
-      game.wanted.stars = 5;
-      this.heatForced = true;
-    }
-    if (s.type === 'heat') {
-      game.wanted.heat = s.stars * 100;
-      game.wanted.stars = s.stars;
-    }
-  }
-
-  advance(game) {
-    const m = this.current;
-    if (!m) return;
-    this.step++;
-    if (this.step >= m.steps.length) {
-      this.active = false;
-      this.completed = true;
-      game.cash += m.payout;
-      game.missionsDone = Math.max(game.missionsDone, this.index + 1);
-      this.onEvent('mission-complete', m);
+  _placeMarker() {
+    const step = this.step;
+    if (!step) {
+      this.marker.visible = false;
       return;
     }
-    this.onEvent('mission-step', m.steps[this.step]);
-    this.applyStepEffect(game);
-  }
-
-  fail(game, reason) {
-    if (!this.active) return;
-    this.active = false;
-    this.failed = true;
-    this.heatForced = false;
-    this.onEvent('mission-fail', { mission: this.current, reason });
-  }
-
-  update(game, dt) {
-    if (!this.active) return;
-    const s = this.currentStep;
-    if (!s) return;
-    const px = game.player.x;
-    const pz = game.player.z;
-    if (s.type === 'goto' || s.type === 'drive') {
-      if (s.type === 'drive' && !game.player.inCar) return;
-      if (dist2d(px, pz, s.x, s.z) < s.radius) this.advance(game);
-    } else if (s.type === 'steal') {
-      if (game.player.inCar) this.advance(game);
-    } else if (s.type === 'heat') {
-      if (game.wanted.stars >= s.stars) this.advance(game);
-    } else if (s.type === 'lose') {
-      if (game.wanted.stars === 0) this.advance(game);
-    } else if (s.type === 'taxi') {
-      if (game.faresDone - this.faresAtStart >= s.count) this.advance(game);
-    } else if (s.type === 'coins') {
-      if (game.coinsCollected - this.coinsAtStart >= s.count) this.advance(game);
-    } else if (s.type === 'chase') {
-      if (dist2d(px, pz, 0, 200) < 14) this.advance(game);
+    if (step.x !== undefined) {
+      this.marker.position.set(step.x, 0, step.z);
+      this.marker.visible = true;
+    } else {
+      this.marker.visible = false;
     }
   }
 
-  retry(game) {
-    this.failed = false;
-    this.start(this.index, game);
+  onCarStolen() {
+    const step = this.step;
+    if (step && step.type === 'steal') this._advance();
+  }
+
+  onPunch() {
+    const step = this.step;
+    if (step && step.type === 'punch') {
+      this.punchCount += 1;
+      if (this.punchCount >= step.count) this._advance();
+    }
+  }
+
+  onFareStart() {
+    const step = this.step;
+    if (step && step.type === 'fare') this.fareStarted = true;
+  }
+
+  onFareComplete() {
+    const step = this.step;
+    if (step && step.type === 'fare') this._advance();
+  }
+
+  _advance() {
+    this.stepIndex += 1;
+    this.waitTimer = 0;
+    if (this.stepIndex >= this.active.steps.length) {
+      this.done = true;
+      this.marker.visible = false;
+      return;
+    }
+    this._placeMarker();
+  }
+
+  // Returns 'complete' when the mission is finished, 'step' when a step
+  // finished this frame, or null.
+  update(dt, playerPos, inCar) {
+    const step = this.step;
+    if (!step || this.done) return this.done ? 'complete' : null;
+    if (step.type === 'goto' || step.type === 'chase') {
+      const d = distance2D(playerPos.x, playerPos.z, step.x, step.z);
+      if (step.car && !inCar) return null;
+      if (d <= step.radius) {
+        this._advance();
+        return this.done ? 'complete' : 'step';
+      }
+      return null;
+    }
+    if (step.type === 'wait') {
+      const d = distance2D(playerPos.x, playerPos.z, step.x, step.z);
+      if (d <= step.radius) {
+        this.waitTimer += dt;
+        if (this.waitTimer >= step.seconds) {
+          this._advance();
+          return this.done ? 'complete' : 'step';
+        }
+      } else {
+        this.waitTimer = 0;
+      }
+      return null;
+    }
+    return null;
+  }
+
+  objectiveText(playerPos) {
+    const mission = this.active;
+    if (!mission) return null;
+    const step = this.step;
+    if (!step) return null;
+    let text = step.text;
+    if (step.type === 'fare' && this.fareStarted) {
+      text = 'Fare in progress — drive to the green ring';
+    }
+    if (step.type === 'punch') {
+      text += ` — ${Math.min(this.punchCount, step.count)}/${step.count}`;
+    }
+    if (step.type === 'wait') {
+      text += ` — ${Math.max(0, Math.ceil(step.seconds - this.waitTimer))}s`;
+    }
+    if ((step.type === 'goto' || step.type === 'chase') && step.x !== undefined) {
+      const d = Math.round(distance2D(playerPos.x, playerPos.z, step.x, step.z));
+      text += ` — ${d}m`;
+    }
+    return { mission: mission.name, payout: mission.payout, text };
+  }
+
+  fail() {
+    this.activeIndex = -1;
+    this.stepIndex = 0;
+    this.marker.visible = false;
+    this.done = false;
+  }
+
+  clear() {
+    this.fail();
   }
 }

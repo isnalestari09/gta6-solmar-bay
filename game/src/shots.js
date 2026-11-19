@@ -1,105 +1,103 @@
-// Solmar Bay — staged shots for screenshots and the debug hooks the playtest
-// harness uses. URL ?shot=N stages a view; window.__solmar exposes game state.
+// Solmar Bay — staged screenshots: `?shot=start|play|chase|mission8&seed=1`
+// poses the game for each of the four screenshots, then a debug hook
+// (`window.__solmar`) lets the playtest drive the game headlessly.
+// Shots never change the save: the shot state is applied in memory only.
 
-import { dist2d } from './config.js';
+import { DOCKS, PLAZAS } from './config.js';
 
-export const SHOTS = [
-  { name: '1-start', label: 'Plaza del Sol at sunset, Dani on foot', cam: [118, 26, 128], look: [92, 2, 92], state: 'menu' },
-  { name: '2-play', label: 'Driving the boulevard in a stolen sedan', cam: [30, 12, -40], look: [0, 2, 10], state: 'drive' },
-  { name: '3-chase', label: 'Three-star police chase at Coral Plaza', cam: [-60, 22, -60], look: [-92, 2, -92], state: 'chase' },
-  // Mission shot: chase camera behind Dani as he runs for the boat, so the
-  // player, the docks and the escape boat are all in frame.
-  { name: '4-mission', label: 'Mission marker at the docks', cam: [0, 7, 146], look: [0, 2, 200], state: 'mission' },
+export const SHOT_DEFS = [
+  { name: '1-start.jpg', query: '?shot=start&seed=1' },
+  { name: '2-play.jpg', query: '?shot=play&seed=1' },
+  { name: '3-chase.jpg', query: '?shot=chase&seed=1' },
+  { name: '4-mission.jpg', query: '?shot=mission8&seed=1' },
 ];
 
-export function stageShot(game, n) {
-  const shot = SHOTS[n];
-  if (!shot) return null;
-  game.shotName = shot.name;
-  game.errors.length = 0; // a staged shot starts with a clean error slate
-  game.hideMenuForShot();
-  if (shot.state === 'menu') {
-    // Face the plaza from the south-east so Dani, the fountain and the
-    // sunset skyline share the frame.
-    game.camYaw = Math.PI * 0.75;
+// Poses the game for a screenshot. `game` is the object main.js builds.
+export function applyShot(game, shot) {
+  const params = new URLSearchParams(window.location.search);
+  const seed = Number(params.get('seed') || 1);
+  void seed;
+  if (shot === 'start') {
+    // Plaza del Sol from above: Dani on foot, fountain, palms, cars.
+    game.setPlayerAt(PLAZAS.sol.x + 2, PLAZAS.sol.z + 14, Math.PI);
+    game.setCameraMode('high');
+    game.startGame();
+  } else if (shot === 'play') {
+    // Driving the boulevard in the taxi, on the road, city ahead.
+    game.setPlayerInTaxi();
+    game.currentCar.pos.set(0, 0, -40);
+    game.currentCar.heading = Math.PI / 2;
+    game.currentCar.mesh.rotation.y = Math.PI / 2;
+    game.player.pos.set(0, 0, -40);
+    game.setCameraMode('drive');
+    game.startGame();
+  } else if (shot === 'chase') {
+    // Three-star chase at Coral Plaza, camera low behind Dani, cops placed
+    // close so the pursuit reads in the frame.
+    game.setPlayerAt(PLAZAS.coral.x, PLAZAS.coral.z + 10, Math.PI * 0.75);
+    game.wanted.setHeat(55);
+    game.wanted.placeCopsNear(PLAZAS.coral.x, PLAZAS.coral.z + 10, 3);
+    game.setCameraMode('chase');
+    game.startGame();
+  } else if (shot === 'mission8') {
+    // Mission 8 at the docks: Dani on foot facing the sea, boat up-left,
+    // lighthouse up-right, five stars.
+    game.setPlayerAt(80, 140, 0);
+    game.missions.start(7);
+    game.wanted.setHeat(100);
+    game.wanted.heatForced = true;
+    game.setCameraMode('chase');
+    game.startGame();
   }
-  if (shot.state === 'drive') {
-    const car = game.parked[0];
-    game.player.enterCar(car);
-    car.x = 0;
-    car.z = -20;
-    car.heading = 0;
-    car.speed = 22;
-    game.camYaw = Math.PI;
-  } else if (shot.state === 'chase') {
-    game.player.teleport(-92, -70, 0);
-    game.wanted.heat = 300;
-    game.wanted.stars = 3;
-    game.wanted.engaged = true; // staged police count as already arrived
-    const car = game.parked[1];
-    game.player.enterCar(car);
-    car.x = -92;
-    car.z = -70;
-    car.heading = 0.6;
-    car.speed = 20;
-  } else if (shot.state === 'mission') {
-    game.player.teleport(0, 160, Math.PI);
-    game.missions.start(7, game);
-  } else {
-    game.player.teleport(92, 70, Math.PI);
-  }
-  game.shotCamera = { pos: shot.cam, look: shot.look };
-  return shot;
 }
 
-export function installDebugHooks(game) {
+export function readShotFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('shot');
+}
+
+// The headless playtest talks to the game through this hook.
+export function installDebugHook(game) {
   window.__solmar = {
+    version: 'solmar-bay-5',
     game,
-    version: 'solmar-bay-4',
-    get state() {
+    state() {
       return {
-        cash: game.cash,
-        missionsDone: game.missionsDone,
-        missionActive: game.missions.active,
-        missionIndex: game.missions.index,
-        missionStep: game.missions.step,
-        wanted: game.wanted.stars,
-        heat: Math.round(game.wanted.heat),
-        coins: game.coinsCollected,
-        fares: game.faresDone,
-        inCar: !!game.player.inCar,
-        px: Math.round(game.player.x),
-        pz: Math.round(game.player.z),
-        shot: game.shotName ?? null,
-        errors: game.errors.slice(),
+        started: game.started,
+        paused: game.paused,
+        cash: game.save.cash,
+        stars: game.wanted.stars,
+        heat: game.wanted.heat,
+        mission: game.missions.active ? game.missions.active.name : null,
+        missionsDone: game.save.missionsDone,
+        coins: game.coins.filter((c) => !c.taken).length,
+        player: { x: game.player.pos.x, z: game.player.pos.z, health: game.player.health },
+        inCar: !!game.currentCar,
+        cops: game.wanted.cops.length,
+        carSpeed: game.currentCar ? Math.abs(game.currentCar.speed) : 0,
       };
     },
-    teleport(x, z) {
-      game.player.teleport(x, z, 0);
+    press(code) {
+      game.input.down.add(code);
+      game.input.pressed.add(code);
+      setTimeout(() => game.input.down.delete(code), 120);
+    },
+    hold(code, ms) {
+      game.input.down.add(code);
+      setTimeout(() => game.input.down.delete(code), ms);
     },
     startMission(i) {
-      game.missions.start(i, game);
+      game.missions.start(i);
     },
-    setWanted(n) {
-      game.wanted.heat = n * 100;
-      game.wanted.stars = n;
+    setHeat(h) {
+      game.wanted.setHeat(h);
     },
-    giveCash(n) {
-      game.cash += n;
+    teleport(x, z) {
+      game.setPlayerAt(x, z, game.player.heading);
     },
-    shot(n) {
-      return stageShot(game, n);
+    reset() {
+      game._resetWorld();
+      game.startGame();
     },
   };
-  const params = new URLSearchParams(location.search);
-  const shot = params.get('shot');
-  if (shot !== null) {
-    const n = parseInt(shot, 10);
-    if (!Number.isNaN(n)) {
-      game.pendingShot = n;
-    }
-  }
-  window.addEventListener('error', (e) => {
-    game.errors.push(String(e.message || e.error || 'error'));
-  });
 }

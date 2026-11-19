@@ -1,61 +1,64 @@
-// Solmar Bay — the entry program for make.fun's Make GTA 6 (gta6-01).
-// Node 22, standard library only. Copies game/ and screenshots/ from this
-// repository into the output directory and writes dossier.json with the kit's
-// buildDossier from vendor/makefun-game.ts, exactly as the scorer rebuilds it.
+// Solmar Bay — the entry program (Node 22, standard library only).
+// It hands the game in: copies game/ and screenshots/ from beside this file
+// to the output directory and writes dossier.json, the summary the judge
+// reads, with the vendored make.fun library.
+//
+// Serve it locally with `node serve.ts`, then open http://localhost:8080.
+// Outside the grader, MAKEFUN_OUTPUT_DIR stands in for /output:
+//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { buildDossier } from './vendor/makefun-game.ts';
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync, readdirSync, statSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, writeFileSync, readdirSync, statSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { dirname, join } from 'node:path';
+import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildDossier } from './vendor/makefun-game.ts';
 
-const repoRoot = dirname(fileURLToPath(import.meta.url));
-const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const here = fileURLToPath(new URL('.', import.meta.url));
+const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const gameDir = join(here, 'game');
+const shotsDir = join(here, 'screenshots');
 
-function copyTree(src, dest) {
-  mkdirSync(dest, { recursive: true });
-  cpSync(src, dest, { recursive: true });
-}
-
-const gameSrc = join(repoRoot, 'game');
-const shotsSrc = join(repoRoot, 'screenshots');
-if (!existsSync(gameSrc)) throw new Error('main.ts: game/ is missing from the repository');
-if (!existsSync(join(gameSrc, 'index.html'))) throw new Error('main.ts: game/index.html is missing from the repository');
-if (!existsSync(shotsSrc)) throw new Error('main.ts: screenshots/ is missing from the repository');
-// The dossier only accepts up to 4 screenshots of 256 KiB each: fail loudly
-// here instead of shipping a build the scorer would reject.
-const shotFiles = readdirSync(shotsSrc).filter((f) => /\.(jpe?g|png)$/i.test(f)).sort();
-if (shotFiles.length !== 4) throw new Error(`main.ts: expected 4 screenshots, found ${shotFiles.length}`);
-for (const f of shotFiles) {
-  const size = statSync(join(shotsSrc, f)).size;
-  if (size > 262144) throw new Error(`main.ts: screenshot ${f} is ${size} bytes, over the 256 KiB limit`);
-}
-
-rmSync(outDir, { recursive: true, force: true });
-mkdirSync(outDir, { recursive: true });
-copyTree(gameSrc, join(outDir, 'game'));
-copyTree(shotsSrc, join(outDir, 'screenshots'));
-
-const dossier = buildDossier(outDir, {
-  text_max_bytes: 163840,
-  screenshots: { max: 4, max_bytes: 262144 },
-  game_max_files: 993,
-  game_max_bytes: 50331648,
-  game_path_max_bytes: 1000,
-});
-writeFileSync(join(outDir, 'dossier.json'), dossier);
-
-// Report the dossier fingerprint and file counts, so two runs can be
-// compared byte-for-byte and the scorer's rebuild can be sanity-checked.
-function countFiles(dir) {
-  let n = 0;
-  for (const e of readdirSync(dir, { withFileTypes: true })) {
-    n += e.isDirectory() ? countFiles(join(dir, e.name)) : 1;
+function countGameFiles(dir) {
+  let files = 0;
+  let bytes = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      const sub = countGameFiles(path);
+      files += sub.files;
+      bytes += sub.bytes;
+    } else if (entry.isFile()) {
+      files += 1;
+      bytes += statSync(path).size;
+    }
   }
-  return n;
+  return { files, bytes };
 }
-const hash = createHash('sha256').update(dossier).digest('hex');
-console.log(`Solmar Bay dossier written: ${dossier.length} bytes to ${outDir}/dossier.json`);
-console.log(`dossier sha256: ${hash}`);
-console.log(`screenshots: ${shotFiles.join(', ')}`);
-console.log(`game files: ${countFiles(join(outDir, 'game'))}, screenshots: ${countFiles(join(outDir, 'screenshots'))}`);
+
+const game = countGameFiles(gameDir);
+console.log(`Solmar Bay: ${game.files} game files, ${(game.bytes / 1024).toFixed(1)} KiB`);
+const shots = existsSync(shotsDir) ? readdirSync(shotsDir).filter((name) => extname(name).toLowerCase() === '.jpg' || extname(name).toLowerCase() === '.png') : [];
+console.log(`Solmar Bay: ${shots.length} screenshots: ${shots.join(', ')}`);
+if (shots.length < 3 || shots.length > 4) {
+  throw new Error(`Solmar Bay: expected 3 or 4 screenshots, found ${shots.length} — take them with the playtest first.`);
+}
+
+mkdirSync(out, { recursive: true });
+cpSync(gameDir, join(out, 'game'), { recursive: true });
+mkdirSync(join(out, 'screenshots'), { recursive: true });
+if (existsSync(shotsDir)) cpSync(shotsDir, join(out, 'screenshots'), { recursive: true });
+
+writeFileSync(
+  join(out, 'dossier.json'),
+  buildDossier(out, {
+    text_max_bytes: 163840,
+    screenshots: { max: 4, max_bytes: 262144 },
+    game_max_files: 993,
+    game_max_bytes: 50331648,
+    game_path_max_bytes: 1000,
+  }),
+);
+
+console.log(`Solmar Bay: dossier written to ${join(out, 'dossier.json')}`);
+const dossierHash = createHash('sha256').update(readFileSync(join(out, 'dossier.json'))).digest('hex');
+console.log(`Solmar Bay: dossier sha256 ${dossierHash}`);

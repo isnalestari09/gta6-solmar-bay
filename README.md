@@ -4,10 +4,14 @@
 
 # Solmar Bay — an open-world crime game
 
+Entry for make.fun bounty `gta6-01` — $1,666, 100 places paid.
+Deadline: Mon 24 Nov 2026 22:00 WIB (Mon 24 Nov 2026 15:00 UTC).
+
 Dani Reyes, getaway driver, returns to coastal Solmar Bay to buy his sister
-Lila's freedom from the Coral Kings. The price: $2,600. Steal cars, outrun the
-Solmar Bay PD, run taxi fares, collect sunset coins and work through 8 story
-missions — ending in a five-star epilogue chase to the boat at the docks.
+Lila's freedom from the Coral Kings — the price is $2,600. Steal cars, outrun
+the Solmar Bay PD, run taxi fares, collect 12 sunset coins and work through
+8 story missions, ending in a five-star epilogue chase to the boat at the
+docks. An original game: nothing here is from Rockstar Games or GTA.
 
 ## Play
 
@@ -17,51 +21,31 @@ node serve.ts
 ```
 
 No build step, no network: `game/` is plain static files, Three.js r160 is
-vendored under `game/vendor/`.
+vendored under `game/vendor/`. Works offline in desktop Chrome.
 
 ## Controls
 
 - WASD — walk / drive, mouse drag — camera
-- Shift — sprint, E — enter / leave a car, F or Space — punch
-- M — next mission, T — taxi fare (while driving the yellow taxi)
-- R or 1–4 — radio stations, N — mute, P — pause
+- Shift — sprint · E — enter / leave car · F / Space — punch
+- M — next mission · T — taxi fare (in the yellow taxi)
+- R / 1-4 — radio stations · N — mute · P — pause
 
-## Systems
+## The city
 
-- Open city: road grid, two plazas, docks with a lighthouse, 28 parked cars to steal, 14 traffic cars, 26 pedestrians
-- Five-star wanted system: police spawn around the player and chase; heat decays fast while hiding
-- 8 story missions ($150–$2,600), fail keeps your cash, retry is free; objectives show live distance and progress
-- Taxi fares, 12 hidden sunset coins with a HUD counter, 4 WebAudio-synth radio stations
-- HUD with objective tracker and live minimap (coins, docks, police, mission marker), localStorage save v2
-- Camera shake, coin SFX, sirens, engine hum, brake/reverse lights, punch arm swing, pause and busted flow
+A sunset grid city: Plaza del Sol with its fountain, Coral Plaza, a docks
+strip with a lighthouse and the escape boat, 28 parked cars to steal, 14
+traffic cars, 26 pedestrians, a five-star wanted system with police who
+chase and ram, four WebAudio-synth radio stations, and a save that lives in
+localStorage (v2, with v1 migration). Progress saves after every mission,
+fare and coin.
 
-## Playtest
+## The missions
 
-Headless Chrome (CDP harness in `/tmp/solmar-playtest2.mjs`) drives the real
-game: page load, walking, car theft, driving, mission start, police spawn,
-coin pickup and save v2 — **14/14 checks pass with zero console errors**.
-The 4 screenshots in `screenshots/` are real gameplay captures at 1280×720.
-
-## Revision pass (round 2, recorded session)
-
-Every authored file was revised in the recorded session: shared constants
-for camera/economy/wanted tuning, a coins HUD counter and docks marker on
-the minimap, live progress on mission objectives, a lighthouse and boat
-sail at the docks, punch arm swing and sprint lean, pedestrians that flee
-a punch, brake/reverse lights, a mission-step chime with siren ducking,
-Space as a second punch key, save validation and v1 cleanup, and
-`main.ts` screenshot validation before the dossier is written.
-
-## Handing in
-
-`main.ts` (Node 22, standard library only) copies `game/` and `screenshots/`
-to the output directory and writes `dossier.json` with the kit's
-`buildDossier` from `vendor/makefun-game.ts`.
-
-```sh
-mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
-```
-
-## License
-
-MIT — see LICENSE.
+1. First Wheels — $150 · steal a car, bring it to Plaza del Sol
+2. Lila's Note — $200 · meet the contact at Coral Plaza
+3. The Drop — $300 · drive a package to the docks warehouse
+4. Hot Cargo — $400 · two stops, one hot cargo
+5. Rough Crowd — $500 · knock down 2 hecklers at Coral Plaza
+6. Taxi Shift — $350 · finish a fare in the yellow taxi
+7. The Exchange — $600 · the lighthouse, then the boat
+8. One Last Chase — $2,600 · five stars, escape to the boat — Lila is free

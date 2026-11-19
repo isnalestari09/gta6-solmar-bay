@@ -1,73 +1,81 @@
-// Solmar Bay — tiny static file server for local playtesting.
-// Serves game/ at http://localhost:8080. Node standard library only.
+// A tiny static server for game/ (Node 22, standard library only): `node
+// serve.ts` serves game/ on http://localhost:8080. It sends the MIME types a
+// browser game needs, refuses any path outside game/, answers HEAD, and
+// sends no-cache headers so a rebuild is never shadowed by a stale file.
 
+import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join, normalize } from 'node:path';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = join(fileURLToPath(new URL('.', import.meta.url)), 'game');
-const port = Number(process.env.PORT ?? 8080);
+const root = resolve(fileURLToPath(new URL('./game', import.meta.url)));
+const args = process.argv.slice(2);
+const portIndex = args.indexOf('--port');
+const requested = portIndex === -1 ? 8080 : Number(args[portIndex + 1]);
+const port = Number.isInteger(requested) && requested > 0 && requested < 65536 ? requested : 8080;
 
-const TYPES = {
-  '.html': 'text/html',
-  '.js': 'text/javascript',
-  '.mjs': 'text/javascript',
-  '.css': 'text/css',
-  '.json': 'application/json',
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.txt': 'text/plain; charset=utf-8',
 };
 
-const server = createServer(async (req, res) => {
-  try {
-    const url = new URL(req.url ?? '/', 'http://localhost');
-    let path = decodeURIComponent(url.pathname);
-    if (path === '/') path = '/index.html';
-    // Browsers ask for a favicon on every load; answer empty instead of
-    // logging a 404 for it.
-    if (path === '/favicon.ico') {
-      res.writeHead(204);
-      res.end();
-      return;
-    }
-    const file = normalize(join(root, path));
-    if (!file.startsWith(root)) {
-      res.writeHead(403);
-      res.end('forbidden');
-      return;
-    }
-    const data = await readFile(file);
-    // Never cache during playtesting: a stale bundle hides the latest edit.
-    const headers = {
-      'content-type': TYPES[extname(file)] ?? 'application/octet-stream',
-      'cache-control': 'no-store',
-    };
-    // HEAD answers headers only, so uptime probes never pull the whole file.
-    if (req.method === 'HEAD') {
-      res.writeHead(200, { ...headers, 'content-length': data.length });
-      res.end();
-      return;
-    }
-    res.writeHead(200, headers);
-    res.end(data);
-  } catch {
-    console.log(`404 ${req.method} ${req.url ?? '/'}`);
-    res.writeHead(404);
-    res.end('not found');
+const server = createServer((request, response) => {
+  const url = new URL(request.url, 'http://localhost');
+  const decoded = decodeURIComponent(url.pathname);
+  const safe = normalize(join(root, decoded)).replace(/\\/g, '/');
+  if (!safe.startsWith(root.replace(/\\/g, '/') + sep) && safe !== root.replace(/\\/g, '/')) {
+    response.writeHead(403);
+    response.end('forbidden');
+    return;
   }
+  let path = safe;
+  if (decoded.endsWith('/')) path = join(path, 'index.html');
+  let stat;
+  try {
+    stat = statSync(path);
+  } catch {
+    response.writeHead(404);
+    response.end('not found');
+    return;
+  }
+  if (!stat.isFile()) {
+    response.writeHead(404);
+    response.end('not found');
+    return;
+  }
+  if (request.url === '/favicon.ico') {
+    response.writeHead(204);
+    response.end();
+    return;
+  }
+  const type = MIME[extname(path).toLowerCase()] || 'application/octet-stream';
+  response.writeHead(200, { 'content-type': type, 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff', 'content-length': stat.size });
+  if (request.method === 'HEAD') {
+    response.end();
+    return;
+  }
+  createReadStream(path).pipe(response);
 });
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`Solmar Bay: port ${port} is already in use — stop the other server or set PORT to something else.`);
-  } else {
-    console.error('Solmar Bay server error:', err.message);
+    console.error(`Port ${port} is already in use — stop the other server or pass --port <n>.`);
+    process.exit(1);
   }
-  process.exit(1);
+  throw err;
 });
 
 server.listen(port, () => {
-  console.log(`Solmar Bay serving game/ at http://localhost:${port}`);
+  console.log(`Solmar Bay on http://localhost:${port}`);
 });
