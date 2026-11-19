@@ -1,67 +1,59 @@
-// Solmar Bay — screenshot presets: ?shot=start|play|chase|mission&seed=N
-// stages the game into a deterministic, readable frame for screenshots/.
-// The game itself never depends on these; they only drive its public API.
+// Solmar Bay — screenshot staging. One job: read ?shot=...&seed=... from the
+// URL and place the player, cars and wanted level so each of the four shots
+// shows a different system at its best. Only active in staged mode.
+export const SHOT_NAMES = ['start', 'drive', 'chase', 'mission8'];
 
-export function applyShot(game, params) {
-  const shot = params.get('shot') || 'start';
-  game.startGame();
-  if (shot === 'start') {
-    // The cover: the live plaza in full daylight — Dani on foot at the
-    // fountain, palms, towers and the HUD, no menu overlay in the way.
-    // He stands just south of the fountain so the camera sits inside the
-    // palm ring, not in its canopy.
-    game.player.pos.set(0, 0, 8);
-    game.player.heading = Math.PI;
-    game.player.mesh.position.copy(game.player.pos);
-    game.player.updateCamera(1, game.camera);
-    return 'start';
+export function readShot() {
+  const q = new URLSearchParams(window.location.search);
+  const shot = q.get('shot');
+  if (!SHOT_NAMES.includes(shot)) return null;
+  return { name: shot, seed: Number(q.get('seed') || 1) };
+}
+
+// Apply a shot's staging to the live game object (see main.js for its shape).
+export function applyShot(game, shot) {
+  const { player, vehicles, wanted, missions } = game;
+  if (shot.name === 'start') {
+    player.reset(0, 14);
+    player.yaw = Math.PI;
+    game.cash = 210;
+    game.coinsCollected = 1;
+    game.setCameraYaw(Math.PI);
+  } else if (shot.name === 'drive') {
+    const car = vehicles.parked[0];
+    vehicles.playerCar = car;
+    car.taken = true;
+    car.x = 0;
+    car.z = -40;
+    car.yaw = Math.PI;
+    car.speed = 26;
+    player.group.visible = false;
+    game.cash = 210;
+    game.coinsCollected = 1;
+    game.setCameraYaw(Math.PI);
+  } else if (shot.name === 'chase') {
+    player.reset(0, 14);
+    player.yaw = Math.PI;
+    wanted.addHeat(55, 'shot');
+    game.cash = 210;
+    game.coinsCollected = 1;
+    game.setCameraYaw(Math.PI);
+    // Park the cruisers in a visible V ahead of Dani, closing in.
+    const spots = [[-6, 0], [6, 2], [0, -16]];
+    vehicles.cops.forEach((cop, i) => {
+      const s = spots[i % spots.length];
+      cop.x = s[0];
+      cop.z = s[1];
+      cop.yaw = 0;
+    });
+  } else if (shot.name === 'mission8') {
+    player.reset(0, -140);
+    player.yaw = Math.PI;
+    missions.start(7);
+    game.cash = 210;
+    game.coinsCollected = 1;
+    game.setCameraYaw(Math.PI);
   }
-  if (shot === 'play') {
-    // Dani driving up the main avenue, traffic and towers around him.
-    const car = game.vehicles.parked[0];
-    game.player.pos.set(car.pos.x, 0, car.pos.z);
-    game.player.enterCar(car);
-    car.heading = Math.PI;
-    car.mesh.rotation.y = Math.PI;
-    car.pos.set(0, 0, 120);
-    car.mesh.position.set(0, 0, 120);
-    game.player.speed = 24;
-    game.player.pos.copy(car.pos);
-    // Keep the throttle open so the shot catches the car moving, not parked.
-    game.shotDrive = true;
-    game.player.updateCamera(1, game.camera);
-    return 'play';
-  }
-  if (shot === 'chase') {
-    // Three stars: police closing in on Dani at the plaza, on foot.
-    game.player.pos.set(6, 0, 10);
-    game.player.heading = Math.PI * 0.75;
-    game.player.mesh.position.copy(game.player.pos);
-    game.player.health = 88;
-    game.wanted.setStars(3);
-    game.wanted.spawnAround(game.player.pos);
-    for (const cop of game.wanted.cops) {
-      cop.pos.set(game.player.pos.x + 14, 0, game.player.pos.z - 18);
-      cop.mesh.position.copy(cop.pos);
-    }
-    game.player.updateCamera(1, game.camera);
-    return 'chase';
-  }
-  if (shot === 'mission') {
-    // Mission 8, the finale: five stars, Dani running for Lila's boat.
-    // He faces south, down the dock road, so the boat, its beacon and the
-    // lighthouse are in frame ahead of him.
-    game.save.missionIndex = 7;
-    game.missions.index = 7;
-    game.missions.start();
-    game.player.pos.set(120, 0, 196);
-    game.player.heading = 0;
-    game.player.mesh.position.copy(game.player.pos);
-    game.wanted.setStars(5);
-    game.wanted.frozen = true;
-    game.wanted.spawnAround(game.player.pos);
-    game.player.updateCamera(1, game.camera);
-    return 'mission';
-  }
-  return shot;
+  game.started = true;
+  game.hud.showMenu(false);
 }

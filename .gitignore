@@ -1,3 +1,6 @@
-out/
 node_modules/
+out/
+dist/
 .DS_Store
+gta6-01-kit/
+kit.tar.gz

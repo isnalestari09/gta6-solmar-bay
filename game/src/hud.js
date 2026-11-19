@@ -1,145 +1,110 @@
-// Solmar Bay — the HUD: cash, stars, coins, mission line, health, speed,
-// radio, help text, toast messages, the live minimap, and the menu / pause /
-// busted / story-end overlays.
-
-import { RADIO, WORLD } from './config.js';
-
-export class HUD {
-  constructor(game) {
-    this.game = game;
-    this.el = {};
-    for (const id of ['cash', 'coins', 'stars', 'mission-name', 'mission-obj', 'health', 'speed', 'radio', 'help', 'toast', 'menu', 'pause', 'busted', 'story-end', 'minimap', 'car-health']) {
-      this.el[id] = document.getElementById(id);
-    }
-    this.minimap = this.el.minimap.getContext('2d');
+// Solmar Bay — the HUD. One job: keep the DOM overlay and the 2D minimap in
+// sync with the game state, and show/hide the menu, pause, busted and win
+// overlays. The game owns the state; this file only renders it.
+export class Hud {
+  constructor() {
+    this.cashEl = document.getElementById('hud-cash');
+    this.coinsEl = document.getElementById('hud-coins');
+    this.starsEl = document.getElementById('hud-stars');
+    this.missionEl = document.getElementById('hud-mission');
+    this.objectiveEl = document.getElementById('hud-objective');
+    this.healthEl = document.getElementById('hud-health');
+    this.speedEl = document.getElementById('hud-speed');
+    this.carEl = document.getElementById('hud-car');
+    this.radioEl = document.getElementById('hud-radio');
+    this.toastEl = document.getElementById('hud-toast');
+    this.menuEl = document.getElementById('overlay-menu');
+    this.pauseEl = document.getElementById('overlay-pause');
+    this.bustedEl = document.getElementById('overlay-busted');
+    this.winEl = document.getElementById('overlay-win');
+    this.map = document.getElementById('minimap');
+    this.mapCtx = this.map.getContext('2d');
     this.toastTimer = 0;
-    this.lastCash = -1;
   }
 
-  showToast(text) {
-    this.el.toast.textContent = text;
-    this.el.toast.classList.add('show');
-    this.toastTimer = 4;
+  starRow(n) {
+    let s = '';
+    for (let i = 0; i < 5; i++) s += i < n ? '★' : '☆';
+    return s;
   }
 
-  showMenu() {
-    this.el.menu.classList.remove('hidden');
-    this.el.pause.classList.add('hidden');
-    this.el.busted.classList.add('hidden');
-  }
-
-  hideMenu() {
-    this.el.menu.classList.add('hidden');
-  }
-
-  showPause(show) {
-    this.el.pause.classList.toggle('hidden', !show);
-  }
-
-  showBusted(show) {
-    this.el.busted.classList.toggle('hidden', !show);
-  }
-
-  showStoryEnd() {
-    this.el['story-end'].classList.remove('hidden');
-  }
-
-  update(dt) {
-    const g = this.game;
-    const p = g.player;
-    if (this.toastTimer > 0) {
-      this.toastTimer -= dt;
-      if (this.toastTimer <= 0) this.el.toast.classList.remove('show');
-    }
-    if (g.cash !== this.lastCash) {
-      this.el.cash.textContent = `$${g.cash}`;
-      this.lastCash = g.cash;
-    }
-    this.el.coins.textContent = `◉ ${g.coins}/${g.coinsTotal}`;
-    // Wanted stars: filled gold for active, outline for the rest.
-    let stars = '';
-    for (let i = 0; i < 5; i++) stars += i < g.wanted.stars ? '★' : '☆';
-    this.el.stars.textContent = stars;
-    this.el.stars.classList.toggle('hot', g.wanted.stars >= 3);
-    const m = g.missions.current;
-    if (g.missions.completedAll) {
-      this.el['mission-name'].textContent = 'FREE ROAM — LILA IS FREE';
-    } else if (g.missions.active) {
-      this.el['mission-name'].textContent = `MISSION ${m.id} · ${m.name} · $${m.pay}`;
-    } else if (m) {
-      this.el['mission-name'].textContent = 'FREE ROAM';
-    }
-    this.el['mission-obj'].textContent = g.missions.objectiveText(p);
-    this.el.health.textContent = `HEALTH ${Math.round(p.health)}%`;
-    this.el.health.classList.toggle('low', p.health < 35);
-    if (p.inCar) {
-      this.el.speed.textContent = `${Math.round(Math.abs(p.speed) * 2.2)} km/h`;
-      this.el['car-health'].textContent = 'CAR 100%';
-      this.el['car-health'].classList.remove('hidden');
+  update(state) {
+    this.cashEl.textContent = `$${state.cash}`;
+    this.coinsEl.textContent = `◉ ${state.coins}/12`;
+    this.starsEl.textContent = this.starRow(state.stars);
+    this.starsEl.classList.toggle('hot', state.stars > 0);
+    this.missionEl.textContent = state.missionTitle;
+    this.objectiveEl.textContent = state.objective;
+    this.healthEl.textContent = `HEALTH ${Math.round(state.health)}%`;
+    this.healthEl.classList.toggle('low', state.health < 30);
+    if (state.inCar) {
+      this.carEl.style.display = 'block';
+      this.carEl.textContent = `CAR ${Math.round(state.carHealth)}%`;
+      this.speedEl.style.display = 'block';
+      this.speedEl.textContent = `${Math.round(Math.abs(state.speed) * 3.2)} km/h`;
     } else {
-      this.el.speed.textContent = '';
-      this.el['car-health'].classList.add('hidden');
+      this.carEl.style.display = 'none';
+      this.speedEl.style.display = 'none';
     }
-    const station = RADIO[g.audio.station];
-    this.el.radio.textContent = g.audio.muted ? '♪ MUTED' : `♪ ${station.name} — ${station.genre}`;
-    this.el.help.textContent = 'WASD move/drive · E enter car · F / Space punch · Shift sprint · P pause\nM mission · T taxi fare · R radio · 1-4 stations · N mute';
-    this.drawMinimap();
+    this.radioEl.textContent = state.muted ? '♪ MUTED' : `♪ ${state.station}`;
+    if (this.toastTimer > 0) {
+      this.toastTimer -= 1 / 60;
+      if (this.toastTimer <= 0) this.toastEl.style.opacity = '0';
+    }
+    this.drawMinimap(state);
   }
 
-  drawMinimap() {
-    const g = this.game;
-    const ctx = this.minimap;
-    const S = 200;
-    const scale = S / (WORLD.half * 2 + 40);
-    const toMap = (x, z) => [S / 2 + x * scale, S / 2 + z * scale];
-    ctx.fillStyle = '#0e1a2e';
-    ctx.fillRect(0, 0, S, S);
-    ctx.strokeStyle = '#2a4a6a';
-    ctx.lineWidth = 1;
+  toast(text, seconds = 3) {
+    this.toastEl.textContent = text;
+    this.toastEl.style.opacity = '1';
+    this.toastTimer = seconds;
+  }
+
+  showMenu(show) { this.menuEl.style.display = show ? 'flex' : 'none'; }
+  showPause(show) { this.pauseEl.style.display = show ? 'flex' : 'none'; }
+  showBusted(show) { this.bustedEl.style.display = show ? 'flex' : 'none'; }
+  showWin(show) { this.winEl.style.display = show ? 'flex' : 'none'; }
+
+  drawMinimap(state) {
+    const ctx = this.mapCtx;
+    const W = this.map.width;
+    const H = this.map.height;
+    const toMap = (x, z) => [((x + 200) / 400) * W, ((z + 200) / 400) * H];
+    ctx.fillStyle = '#0e2233';
+    ctx.fillRect(0, 0, W, H);
     // Roads.
-    ctx.strokeStyle = '#4a5a6a';
-    for (let i = -4; i <= 4; i++) {
-      const c = i * 60;
-      const [x1, y1] = toMap(c, -WORLD.half);
-      const [x2, y2] = toMap(c, WORLD.half);
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-      const [x3, y3] = toMap(-WORLD.half, c);
-      const [x4, y4] = toMap(WORLD.half, c);
-      ctx.beginPath(); ctx.moveTo(x3, y3); ctx.lineTo(x4, y4); ctx.stroke();
+    ctx.strokeStyle = '#3a4a5a';
+    ctx.lineWidth = 3;
+    for (const line of [-120, -60, 0, 60, 120]) {
+      const [ax] = toMap(line, 0);
+      const [, az] = toMap(0, line);
+      ctx.beginPath(); ctx.moveTo(ax, 0); ctx.lineTo(ax, H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, az); ctx.lineTo(W, az); ctx.stroke();
     }
-    // Sea and docks.
-    ctx.fillStyle = '#1d4e5e';
-    ctx.fillRect(0, toMap(0, WORLD.dockZ)[1], S, S - toMap(0, WORLD.dockZ)[1]);
-    ctx.fillStyle = '#d9b380';
-    ctx.fillRect(0, toMap(0, WORLD.dockZ)[1] - 3, S, 4);
+    // Sea strip at the top (north = docks).
+    ctx.fillStyle = '#1d5c66';
+    ctx.fillRect(0, 0, W, 10);
+    const dot = (x, z, color, r = 3) => {
+      const [mx, mz] = toMap(x, z);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(mx, mz, r, 0, Math.PI * 2);
+      ctx.fill();
+    };
     // Coins.
-    ctx.fillStyle = '#ffc93c';
-    for (const c of g.world.coinMeshes) {
-      if (c.taken) continue;
-      const [x, y] = toMap(c.pos.x, c.pos.z);
-      ctx.fillRect(x - 2, y - 2, 4, 4);
-    }
-    // Objective marker.
-    if (g.world.objective) {
-      const [x, y] = toMap(g.world.objective.pos.x, g.world.objective.pos.z);
-      ctx.fillStyle = '#ff5252';
-      ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#ffffff';
-      ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.stroke();
-    }
+    for (const c of state.coinDots) dot(c.x, c.z, '#ffd21f', 2);
+    // Mission target.
+    if (state.target) dot(state.target.x, state.target.z, '#ff3b30', 5);
+    // Traffic.
+    for (const t of state.trafficDots) dot(t.x, t.z, '#e8c85a', 2);
     // Police.
-    ctx.fillStyle = '#4488ff';
-    for (const cop of g.wanted.cops) {
-      if (!cop.placed) continue;
-      const [x, y] = toMap(cop.pos.x, cop.pos.z);
-      ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
-    }
+    for (const c of state.copDots) dot(c.x, c.z, '#4aa3ff', 3);
     // Player arrow.
-    const [px, py] = toMap(g.player.pos.x, g.player.pos.z);
+    const [px, pz] = toMap(state.playerX, state.playerZ);
     ctx.save();
-    ctx.translate(px, py);
-    ctx.rotate(g.player.inCar ? g.player.inCar.heading : g.player.heading);
-    ctx.fillStyle = '#4ade80';
+    ctx.translate(px, pz);
+    ctx.rotate(state.playerYaw);
+    ctx.fillStyle = '#2ee66b';
     ctx.beginPath();
     ctx.moveTo(0, -7);
     ctx.lineTo(5, 6);
@@ -147,10 +112,10 @@ export class HUD {
     ctx.closePath();
     ctx.fill();
     ctx.restore();
-    // North label.
-    ctx.fillStyle = '#ffffff';
+    // North marker.
+    ctx.fillStyle = '#cfe6ff';
     ctx.font = 'bold 11px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('N', S / 2, 12);
+    ctx.fillText('N', W / 2, 12);
   }
 }

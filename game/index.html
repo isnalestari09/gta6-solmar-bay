@@ -5,89 +5,97 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Solmar Bay — an open-world crime game</title>
 <style>
-  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #ffb36b; font-family: 'Trebuchet MS', Verdana, sans-serif; }
-  #game { position: fixed; inset: 0; }
-  #game canvas { display: block; }
-  .hud { position: fixed; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,.7); pointer-events: none; z-index: 5; }
-  #cash { top: 14px; left: 18px; font-size: 34px; font-weight: 900; color: #7dff8a; }
-  #coins { top: 56px; left: 18px; font-size: 18px; font-weight: 700; color: #ffd24a; }
-  #stars { top: 82px; left: 18px; font-size: 24px; letter-spacing: 2px; color: #cfd8dc; }
-  #stars.hot { color: #ffd24a; }
-  #mission-name { top: 14px; right: 18px; font-size: 19px; font-weight: 900; color: #ffd24a; text-align: right; }
-  #mission-obj { top: 40px; right: 18px; font-size: 15px; text-align: right; max-width: 460px; }
-  #health { bottom: 118px; left: 18px; font-size: 16px; font-weight: 700; }
-  #health.low { color: #ff5252; }
-  #speed { bottom: 88px; left: 18px; font-size: 26px; font-weight: 900; }
-  #car-health { bottom: 148px; left: 18px; font-size: 15px; font-weight: 700; }
-  #radio { bottom: 64px; left: 18px; font-size: 16px; font-weight: 700; color: #ffd24a; }
-  #help { bottom: 14px; left: 18px; font-size: 13px; line-height: 1.45; opacity: .92; white-space: pre-line; }
-  #minimap { bottom: 14px; right: 18px; width: 200px; height: 200px; border: 3px solid rgba(255,255,255,.75); border-radius: 10px; background: #0e1a2e; }
-  #toast { top: 96px; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: 700; background: rgba(0,0,0,.55); padding: 10px 18px; border-radius: 8px; opacity: 0; transition: opacity .3s; max-width: 80vw; text-align: center; }
-  #toast.show { opacity: 1; }
-  .overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #fff; background: rgba(20, 10, 4, .62); z-index: 10; cursor: pointer; }
-  .hidden { display: none !important; }
-  .overlay.hidden { display: none; }
-  .overlay h1 { font-size: 64px; margin: 0 0 6px; letter-spacing: 4px; color: #ffd24a; text-shadow: 0 4px 0 rgba(0,0,0,.4); }
-  .overlay h2 { font-size: 26px; margin: 0 0 18px; color: #ffb36b; }
-  .overlay p { font-size: 17px; line-height: 1.6; max-width: 620px; margin: 0 0 14px; padding: 0 20px; }
-  .overlay .cta { font-size: 20px; font-weight: 900; color: #7dff8a; animation: pulse 1.2s infinite; }
-  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
-  .overlay .keys { font-size: 14px; opacity: .9; white-space: pre-line; }
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #1a0f08;
+    font-family: 'Trebuchet MS', Verdana, sans-serif; }
+  #game-canvas { position: fixed; inset: 0; display: block; }
+  .hud { position: fixed; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,.7);
+    z-index: 5; pointer-events: none; user-select: none; }
+  #hud-cash { top: 14px; left: 16px; font-size: 34px; font-weight: bold; color: #7dff8a; }
+  #hud-coins { top: 56px; left: 16px; font-size: 20px; color: #ffd21f; }
+  #hud-stars { top: 84px; left: 16px; font-size: 26px; letter-spacing: 2px; color: #ddd; }
+  #hud-stars.hot { color: #ffd21f; }
+  #hud-mission { top: 14px; right: 16px; font-size: 22px; font-weight: bold;
+    color: #ffd21f; text-align: right; }
+  #hud-objective { top: 44px; right: 16px; font-size: 16px; text-align: right;
+    max-width: 420px; }
+  #hud-health { bottom: 116px; left: 16px; font-size: 20px; font-weight: bold; }
+  #hud-health.low { color: #ff5a4e; }
+  #hud-car { bottom: 144px; left: 16px; font-size: 18px; display: none; }
+  #hud-speed { bottom: 84px; left: 16px; font-size: 28px; font-weight: bold; display: none; }
+  #hud-radio { bottom: 56px; left: 16px; font-size: 18px; color: #ffd21f; }
+  #hud-controls { bottom: 12px; left: 16px; font-size: 14px; color: #eee; }
+  #hud-toast { top: 50%; left: 50%; transform: translate(-50%, -50%);
+    font-size: 30px; font-weight: bold; color: #ffd21f; opacity: 0;
+    transition: opacity .4s; text-align: center; }
+  #minimap { position: fixed; right: 14px; bottom: 14px; width: 190px; height: 190px;
+    border: 3px solid rgba(255,255,255,.75); border-radius: 10px; z-index: 5;
+    background: #0e2233; }
+  .overlay { position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 10; color: #fff;
+    background: rgba(20, 8, 2, 0.72); text-align: center; padding: 20px; }
+  .overlay h1 { font-size: 64px; margin: 0 0 8px; color: #ffd21f;
+    text-shadow: 0 4px 0 #7a2d12, 0 8px 24px rgba(0,0,0,.8); letter-spacing: 3px; }
+  .overlay h2 { font-size: 30px; margin: 0 0 12px; color: #ffd21f; }
+  .overlay p { font-size: 18px; max-width: 620px; line-height: 1.5; margin: 6px 0; }
+  .overlay .keys { font-size: 15px; color: #ffd9a0; line-height: 1.7; }
+  .overlay button { margin-top: 18px; font-size: 22px; font-weight: bold;
+    padding: 12px 42px; border: none; border-radius: 8px; cursor: pointer;
+    background: #ffd21f; color: #3a1c00; box-shadow: 0 4px 0 #a67c00; }
+  .overlay button:hover { background: #ffe45e; }
+  #overlay-pause, #overlay-busted, #overlay-win { display: none; }
+  #overlay-busted h1 { color: #ff5a4e; }
+  #overlay-win h1 { color: #7dff8a; }
 </style>
 <script type="importmap">
-{
-  "imports": {
-    "three": "./vendor/three.module.min.js"
-  }
-}
+{ "imports": { "three": "./vendor/three.module.min.js" } }
 </script>
 </head>
 <body>
-<div id="game"></div>
-<div class="hud" id="cash">$250</div>
-<div class="hud" id="coins">◉ 0/12</div>
-<div class="hud" id="stars">☆☆☆☆☆</div>
-<div class="hud" id="mission-name">FREE ROAM</div>
-<div class="hud" id="mission-obj">Next mission: First Wheels — press M to start</div>
-<div class="hud" id="health">HEALTH 100%</div>
-<div class="hud" id="speed"></div>
-<div class="hud hidden" id="car-health">CAR 100%</div>
-<div class="hud" id="radio">♪ BAYWAVE FM — Synthwave</div>
-<div class="hud" id="help">WASD move/drive · E enter car · F / Space punch · Shift sprint · P pause
-M mission · T taxi fare · R radio · 1-4 stations · N mute</div>
-<canvas class="hud" id="minimap" width="200" height="200"></canvas>
-<div class="hud" id="toast"></div>
+<canvas id="game-canvas"></canvas>
+<div class="hud" id="hud-cash">$0</div>
+<div class="hud" id="hud-coins">◉ 0/12</div>
+<div class="hud" id="hud-stars">☆☆☆☆☆</div>
+<div class="hud" id="hud-mission">FREE ROAM</div>
+<div class="hud" id="hud-objective">Next mission: Bayview Run — press M to start</div>
+<div class="hud" id="hud-health">HEALTH 100%</div>
+<div class="hud" id="hud-car">CAR 100%</div>
+<div class="hud" id="hud-speed">0 km/h</div>
+<div class="hud" id="hud-radio">♪ BAY FM</div>
+<div class="hud" id="hud-controls">WASD move/drive · E enter car · F / Space punch · Shift sprint · P pause<br>M mission · T taxi fare · R radio · 1-4 stations · N mute</div>
+<div class="hud" id="hud-toast"></div>
+<canvas id="minimap" width="190" height="190"></canvas>
 
-<div class="overlay" id="menu">
+<div class="overlay" id="overlay-menu">
   <h1>SOLMAR BAY</h1>
-  <h2>Dani Reyes is home — and his sister Lila is not free.</h2>
-  <p>The Coral Kings hold Lila for <b>$2,600</b>. Steal cars, run missions, dodge the
-  police and earn every dollar in the sun-soaked streets of Solmar Bay. Grab the
-  sunset coins, take taxi fares, and finish the chase to Lila's boat at the docks.</p>
-  <p class="cta">CLICK OR PRESS ENTER TO PLAY</p>
-  <p class="keys">WASD move / drive · E enter car · F or Space punch · Shift sprint · P pause
-M mission · T taxi fare · R radio · 1-4 stations · N mute</p>
+  <p>Dani Reyes is back in his hometown — a getaway driver with one job left:
+  buy his sister Lila's freedom from the Coral Kings for <b>$2,600</b>.
+  Eight missions stand between him and the boat at the docks.</p>
+  <p class="keys">WASD move / drive · E enter &amp; leave car · F or Space punch<br>
+  Shift sprint · M start mission · T taxi fare · R radio · 1–4 stations · N mute · P pause</p>
+  <button id="btn-start">START ENGINE</button>
+  <p id="menu-save" style="font-size:15px;color:#ffd9a0"></p>
 </div>
 
-<div class="overlay hidden" id="pause">
-  <h1>PAUSED</h1>
+<div class="overlay" id="overlay-pause">
+  <h2>PAUSED</h2>
   <p>Solmar Bay waits for no one — except right now.</p>
-  <p class="cta">PRESS P TO KEEP PLAYING</p>
+  <button id="btn-resume">RESUME</button>
 </div>
 
-<div class="overlay hidden" id="busted">
+<div class="overlay" id="overlay-busted">
   <h1>BUSTED</h1>
-  <p>The Solmar Bay police took $100 and your mission. Your cash is kept —<br>
-  the streets are still yours.</p>
-  <p class="cta">PRESS ENTER TO GET BACK OUT THERE</p>
+  <p>The Solmar Bay police caught up with Dani. The Coral Kings keep Lila —
+  for now. Your cash is safe; try the mission again.</p>
+  <button id="btn-retry">TRY AGAIN</button>
 </div>
 
-<div class="overlay hidden" id="story-end">
+<div class="overlay" id="overlay-win">
   <h1>LILA IS FREE</h1>
-  <p>Dani outran the Kings, outran the law, and paid the $2,600. The boat is
-  waiting at the docks — and the whole bay is his now. Free roam: keep the
-  coins, the fares and the sunsets coming.</p>
-  <p class="cta">CLICK TO KEEP PLAYING</p>
+  <p>Dani outran every cruiser in Solmar Bay, reached the boat at the docks,
+  and paid the Coral Kings their $2,600. Brother and sister sail out with the
+  sunset — free.</p>
+  <p id="win-stats" style="font-size:18px"></p>
+  <button id="btn-again">PLAY AGAIN</button>
 </div>
 
 <script type="module" src="./src/main.js"></script>

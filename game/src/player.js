@@ -1,228 +1,129 @@
-// Solmar Bay — Dani Reyes on foot and behind the wheel: movement, sprint,
-// punch combat, car entry, arcade driving and the chase camera.
-
+// Solmar Bay — Dani Reyes on foot. One job: movement, sprint, punch, and the
+// little low-poly figure itself (dark jacket, same face in every scene).
 import * as THREE from 'three';
-import { PLAYER, CARS, WORLD } from './config.js';
+import { PLAYER } from './config.js';
 
-function makePersonMesh(shirt, pants, skin) {
+export function makeDaniFigure() {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(1.1, 1.5, 0.6),
-    new THREE.MeshLambertMaterial({ color: shirt }),
-  );
+  const jacket = new THREE.MeshLambertMaterial({ color: 0x22262e });
+  const skin = new THREE.MeshLambertMaterial({ color: 0xc98a5e });
+  const hair = new THREE.MeshLambertMaterial({ color: 0x14100c });
+  const jeans = new THREE.MeshLambertMaterial({ color: 0x2e4a6b });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.3, 0.6), jacket);
   body.position.y = 1.35;
   g.add(body);
-  const head = new THREE.Mesh(
-    new THREE.BoxGeometry(0.7, 0.7, 0.7),
-    new THREE.MeshLambertMaterial({ color: skin }),
-  );
-  head.position.y = 2.45;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.62, 0.58), skin);
+  head.position.y = 2.3;
   g.add(head);
-  const hair = new THREE.Mesh(
-    new THREE.BoxGeometry(0.75, 0.3, 0.75),
-    new THREE.MeshLambertMaterial({ color: 0x14100c }),
-  );
-  hair.position.y = 2.85;
-  g.add(hair);
-  const legL = new THREE.Mesh(
-    new THREE.BoxGeometry(0.42, 0.9, 0.45),
-    new THREE.MeshLambertMaterial({ color: pants }),
-  );
+  const hairTop = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.22, 0.62), hair);
+  hairTop.position.y = 2.62;
+  g.add(hairTop);
+  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.9, 0.5), jeans);
   legL.position.set(-0.3, 0.45, 0);
   g.add(legL);
   const legR = legL.clone();
   legR.position.x = 0.3;
   g.add(legR);
-  const armL = new THREE.Mesh(
-    new THREE.BoxGeometry(0.34, 1.1, 0.36),
-    new THREE.MeshLambertMaterial({ color: shirt }),
-  );
-  armL.position.set(-0.78, 1.35, 0);
+  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.34, 1.1, 0.4), jacket);
+  armL.position.set(-0.75, 1.35, 0);
   g.add(armL);
   const armR = armL.clone();
-  armR.position.x = 0.78;
+  armR.position.x = 0.75;
   g.add(armR);
-  g.userData.armL = armL;
-  g.userData.armR = armR;
-  g.userData.legL = legL;
-  g.userData.legR = legR;
+  g.userData = { armL, armR, legL, legR, body, head };
   return g;
 }
 
 export class Player {
-  constructor(scene) {
-    this.scene = scene;
-    this.pos = new THREE.Vector3(0, 0, 12);
-    this.vel = new THREE.Vector3();
-    this.heading = Math.PI;
-    this.inCar = null;
+  constructor(scene, city) {
+    this.city = city;
+    this.group = makeDaniFigure();
+    this.group.position.set(0, 0, 8);
+    scene.add(this.group);
+    this.x = 0;
+    this.z = 8;
+    this.yaw = Math.PI; // facing the plaza fountain
+    this.health = PLAYER.health;
     this.speed = 0;
-    this.health = 100;
     this.punchTimer = 0;
     this.punchCooldown = 0;
-    this.punchSwing = 0;
+    this.punching = false;
+    this.swing = 0; // 0..1 punch animation progress
+    this.moving = false;
+    this.sprinting = false;
     this.walkPhase = 0;
-    this.mesh = makePersonMesh(0x1d2f45, 0x2a2a2e, 0xc98a5e);
-    this.mesh.position.copy(this.pos);
-    scene.add(this.mesh);
-    // A soft shadow disc under Dani.
-    this.shadow = new THREE.Mesh(
-      new THREE.CircleGeometry(1.1, 16),
-      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25 }),
-    );
-    this.shadow.rotation.x = -Math.PI / 2;
-    this.shadow.position.y = 0.06;
-    scene.add(this.shadow);
-    this.camShake = 0;
-    this.camPos = new THREE.Vector3(0, 14, 26);
-    this.camLook = new THREE.Vector3();
   }
 
-  reset(spawn) {
-    this.pos.set(spawn.x, 0, spawn.z);
-    this.vel.set(0, 0, 0);
-    this.heading = Math.PI;
-    this.inCar = null;
-    this.speed = 0;
-    this.health = 100;
+  reset(x, z) {
+    this.x = x;
+    this.z = z;
+    this.health = PLAYER.health;
     this.punchTimer = 0;
     this.punchCooldown = 0;
-    this.mesh.visible = true;
+    this.swing = 0;
+    this.group.position.set(x, 0, z);
   }
 
-  // On-foot movement; returns the distance moved this frame.
-  updateOnFoot(dt, input, city) {
-    const { fwd, turn } = input.axes();
-    const sprint = input.isDown('Shift');
-    const top = sprint ? PLAYER.sprintSpeed : PLAYER.walkSpeed;
-    const target = new THREE.Vector3();
-    if (fwd !== 0 || turn !== 0) {
-      // Camera-relative movement: forward is away from the camera.
-      const camDir = this.camLook.clone().sub(this.camPos).setY(0).normalize();
-      const right = new THREE.Vector3().crossVectors(camDir, new THREE.Vector3(0, 1, 0)).negate();
-      target.addScaledVector(camDir, fwd).addScaledVector(right, -turn);
-      target.normalize().multiplyScalar(top);
-      this.heading = Math.atan2(target.x, target.z);
+  update(dt, input, camYaw) {
+    const mv = input.moveVector();
+    this.sprinting = input.held('shift') && mv.active;
+    const speed = this.sprinting ? PLAYER.sprintSpeed : PLAYER.walkSpeed;
+    this.moving = mv.active;
+    if (mv.active) {
+      // Camera-relative movement.
+      const sin = Math.sin(camYaw);
+      const cos = Math.cos(camYaw);
+      const wx = mv.x * cos - mv.z * sin;
+      const wz = mv.x * sin + mv.z * cos;
+      const targetYaw = Math.atan2(wx, wz);
+      let dy = targetYaw - this.yaw;
+      while (dy > Math.PI) dy -= Math.PI * 2;
+      while (dy < -Math.PI) dy += Math.PI * 2;
+      this.yaw += dy * Math.min(1, dt * 12);
+      const nx = this.x + wx * speed * dt;
+      const nz = this.z + wz * speed * dt;
+      const fixed = this.city.resolveCollision(nx, nz, PLAYER.radius);
+      this.x = fixed.x;
+      this.z = fixed.z;
+      this.walkPhase += dt * speed * 1.6;
     }
-    const k = Math.min(1, PLAYER.accel * dt / top);
-    this.vel.lerp(target, k);
-    this.pos.addScaledVector(this.vel, dt);
-    city.collideCircle(this.pos, 0.9);
-    const moving = this.vel.length();
-    this.walkPhase += moving * dt * 1.6;
-    this.mesh.position.copy(this.pos);
-    this.mesh.rotation.y = this.heading;
-    const swing = Math.min(1, moving / PLAYER.walkSpeed) * 0.5;
-    this.mesh.userData.legL.rotation.x = Math.sin(this.walkPhase) * swing;
-    this.mesh.userData.legR.rotation.x = -Math.sin(this.walkPhase) * swing;
-    this.mesh.userData.armL.rotation.x = -Math.sin(this.walkPhase) * swing * 0.8;
-    this.mesh.userData.armR.rotation.x = Math.sin(this.walkPhase) * swing * 0.8;
-    // Punch swing: the right arm snaps forward, then relaxes.
-    if (this.punchSwing > 0) {
-      this.punchSwing = Math.max(0, this.punchSwing - dt * 4);
-      this.mesh.userData.armR.rotation.x = -1.9 * Math.sin(this.punchSwing * Math.PI);
-      this.mesh.userData.armR.rotation.z = -0.4 * Math.sin(this.punchSwing * Math.PI);
+    this.group.position.set(this.x, 0, this.z);
+    this.group.rotation.y = this.yaw;
+    // Walk cycle + punch swing.
+    const u = this.group.userData;
+    const swingAmp = this.moving ? 0.55 : 0;
+    const ph = this.walkPhase;
+    u.legL.rotation.x = Math.sin(ph) * swingAmp;
+    u.legR.rotation.x = -Math.sin(ph) * swingAmp;
+    u.armL.rotation.x = -Math.sin(ph) * swingAmp;
+    u.armR.rotation.x = Math.sin(ph) * swingAmp;
+    if (this.swing > 0) {
+      this.swing = Math.max(0, this.swing - dt * 3.2);
+      const s = Math.sin(this.swing * Math.PI);
+      u.armR.rotation.x = -1.5 * s;
+      u.armR.position.z = 0.5 * s;
+    } else {
+      u.armR.position.z = 0;
     }
-    this.shadow.position.set(this.pos.x, 0.06, this.pos.z);
-    return moving;
+    if (this.punchCooldown > 0) this.punchCooldown -= dt;
+    if (this.punchTimer > 0) this.punchTimer -= dt;
   }
 
   tryPunch() {
-    if (this.punchCooldown > 0 || this.inCar) return false;
+    if (this.punchCooldown > 0) return false;
     this.punchCooldown = PLAYER.punchCooldown;
-    this.punchSwing = 1;
-    this.punchTimer = 0.18;
+    this.punchTimer = 0.25;
+    this.swing = 1;
+    this.punching = true;
     return true;
   }
 
-  tickPunch(dt) {
-    this.punchCooldown = Math.max(0, this.punchCooldown - dt);
-    this.punchTimer = Math.max(0, this.punchTimer - dt);
-  }
-
-  // Arcade car physics: the car steers with the front wheels, accelerates
-  // with W, brakes/reverses with S, and slides a little on the turns.
-  updateDriving(dt, input, city) {
-    const car = this.inCar;
-    const { fwd, turn } = input.axes();
-    if (fwd > 0) this.speed += CARS.accel * dt;
-    else if (fwd < 0) this.speed -= (this.speed > 0.5 ? CARS.brake : CARS.accel * 0.5) * dt;
-    else this.speed -= Math.sign(this.speed) * Math.min(Math.abs(this.speed), 14 * dt);
-    this.speed = Math.max(-CARS.reverseSpeed, Math.min(CARS.topSpeed, this.speed));
-    const steer = turn * CARS.steer * (this.speed >= 0 ? 1 : -1) * Math.min(1, Math.abs(this.speed) / 8);
-    car.heading += steer * dt * (this.speed >= 0 ? 1 : -1) * Math.sign(this.speed || 1);
-    const dx = Math.sin(car.heading) * this.speed * dt;
-    const dz = Math.cos(car.heading) * this.speed * dt;
-    car.pos.x += dx;
-    car.pos.z += dz;
-    const before = car.pos.clone();
-    city.collideCircle(car.pos, 2.4);
-    if (!car.pos.equals(before)) {
-      // Bumped a building: shed speed and shake the camera.
-      this.speed *= 0.4;
-      this.camShake = Math.max(this.camShake, 0.35);
-    }
-    car.mesh.position.set(car.pos.x, 0, car.pos.z);
-    car.mesh.rotation.y = car.heading;
-    // Brake / reverse lights glow when slowing down.
-    car.setBrakeLights(fwd < 0);
-    this.pos.copy(car.pos);
-    this.mesh.visible = false;
-    this.shadow.position.set(car.pos.x, 0.06, car.pos.z);
-  }
-
-  enterCar(car) {
-    this.inCar = car;
-    car.stolen = true;
-    this.mesh.visible = false;
-    this.speed = 0;
-  }
-
-  exitCar() {
-    const car = this.inCar;
-    this.inCar = null;
-    this.speed = 0;
-    const side = new THREE.Vector3(Math.cos(car.heading), 0, -Math.sin(car.heading));
-    this.pos.copy(car.pos).addScaledVector(side, 3);
-    this.mesh.visible = true;
-    this.mesh.position.copy(this.pos);
-  }
-
-  damage(amount) {
+  takeDamage(amount) {
     this.health = Math.max(0, this.health - amount);
-    this.camShake = Math.max(this.camShake, 0.3);
     return this.health <= 0;
   }
 
   heal(amount) {
-    this.health = Math.min(PLAYER.maxHealth, this.health + amount);
-  }
-
-  updateCamera(dt, camera) {
-    const inCar = !!this.inCar;
-    const dist = inCar ? PLAYER.camDistCar : PLAYER.camDistFoot;
-    const height = inCar ? PLAYER.camHeightCar : PLAYER.camHeightFoot;
-    const heading = inCar ? this.inCar.heading : this.heading;
-    const target = new THREE.Vector3(
-      this.pos.x - Math.sin(heading) * dist,
-      height,
-      this.pos.z - Math.cos(heading) * dist,
-    );
-    // Keep the camera from sinking into the docks' sea wall or a tower.
-    target.x = Math.max(-WORLD.half - 10, Math.min(WORLD.half + 10, target.x));
-    target.z = Math.max(-WORLD.half - 10, Math.min(WORLD.half + 30, target.z));
-    const k = Math.min(1, dt * 5);
-    this.camPos.lerp(target, k);
-    const look = new THREE.Vector3(this.pos.x, 2.2, this.pos.z);
-    if (inCar) look.addScaledVector(new THREE.Vector3(Math.sin(heading), 0, Math.cos(heading)), 8);
-    this.camLook.lerp(look, Math.min(1, dt * 8));
-    this.camShake = Math.max(0, this.camShake - dt * 1.4);
-    const shake = this.camShake * this.camShake * 1.2;
-    camera.position.set(
-      this.camPos.x + (Math.random() - 0.5) * shake,
-      this.camPos.y + (Math.random() - 0.5) * shake * 0.6,
-      this.camPos.z + (Math.random() - 0.5) * shake,
-    );
-    camera.lookAt(this.camLook);
+    this.health = Math.min(PLAYER.health, this.health + amount);
   }
 }
