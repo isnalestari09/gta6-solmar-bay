@@ -1,37 +1,97 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Solmar Bay — open-world crime game: 8 missions, a coastal city, cars to steal, police, radio. Built for make.fun gta6-01.">
-<title>Solmar Bay — Open World Crime Game</title>
+<meta name="description" content="Solmar Bay — an original open-world crime game. Dani Reyes returns to a coastal city to buy his sister Lila's freedom from the Coral Kings. 8 missions, police chases, taxi fares and hidden coins.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%23ffb36a'/%3E%3Ctext x='16' y='22' font-size='18' text-anchor='middle'%3E%E2%98%80%3C/text%3E%3C/svg%3E">
+<title>Solmar Bay — An Open-World Crime Story</title>
 <style>
-  html, body { margin: 0; padding: 0; overflow: hidden; background: #101418; font-family: system-ui, sans-serif; }
-  #game { position: fixed; inset: 0; }
-  #game canvas { display: block; }
-  #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; }
-  #cash { position: absolute; top: 14px; left: 16px; font-size: 28px; font-weight: 800; text-shadow: 0 2px 6px #000; }
-  #stars { position: absolute; top: 48px; left: 16px; font-size: 24px; letter-spacing: 2px; text-shadow: 0 2px 6px #000; }
-  #health { position: absolute; top: 82px; left: 16px; font-size: 18px; text-shadow: 0 2px 6px #000; }
-  #speed { position: absolute; bottom: 16px; left: 16px; font-size: 20px; text-shadow: 0 2px 6px #000; }
-  #radio { position: absolute; bottom: 16px; right: 16px; font-size: 15px; background: rgba(0,0,0,.55); padding: 6px 10px; border-radius: 6px; }
-  #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); width: 420px; max-width: 80vw; background: rgba(0,0,0,.55); border-radius: 8px; padding: 8px 12px; }
-  #objective-text { font-size: 14px; display: block; }
-  #objective-bar { height: 6px; background: #ffc93c; border-radius: 3px; margin-top: 6px; width: 0%; transition: width .3s; }
-  #toast { position: absolute; bottom: 64px; left: 50%; transform: translateX(-50%); font-size: 18px; background: rgba(0,0,0,.65); padding: 8px 16px; border-radius: 8px; opacity: 0; transition: opacity .3s; white-space: nowrap; }
-  #minimap { position: absolute; top: 14px; right: 14px; border: 2px solid rgba(255,255,255,.6); border-radius: 8px; background: #1e2b1e; }
-  #screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(8, 12, 20, .72); text-align: center; padding: 20px; }
-  #screen h1 { font-size: 64px; margin: 0; letter-spacing: 6px; color: #ffc93c; text-shadow: 0 4px 18px #000; }
-  #screen p { font-size: 18px; max-width: 640px; line-height: 1.5; }
-  #screen-hint { color: #ffc93c; font-weight: 700; }
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #1a1210; font-family: 'Segoe UI', Arial, sans-serif; }
+  #game-canvas { display: block; width: 100%; height: 100%; }
+  .hidden { display: none !important; }
+  #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; z-index: 5; }
+  #hud-top-left { position: absolute; top: 14px; left: 16px; text-shadow: 0 2px 4px #000; }
+  #hud-cash { font-size: 30px; font-weight: 800; color: #7dff8a; }
+  #hud-stars { font-size: 22px; letter-spacing: 3px; margin-top: 2px; }
+  #hud-top-right { position: absolute; top: 14px; right: 16px; text-align: right; text-shadow: 0 2px 4px #000; max-width: 340px; }
+  #hud-mission { font-size: 15px; font-weight: 700; color: #ffd800; }
+  #hud-objective { font-size: 14px; margin-top: 4px; color: #fff; }
+  #hud-bottom-left { position: absolute; bottom: 16px; left: 16px; text-shadow: 0 2px 4px #000; font-size: 14px; }
+  #hud-speed { font-size: 26px; font-weight: 800; }
+  #hud-health { font-size: 14px; color: #ffb0b0; }
+  #hud-radio { margin-top: 4px; color: #ffd800; font-weight: 600; }
+  #minimap { position: absolute; bottom: 16px; right: 16px; border: 2px solid rgba(255,255,255,0.5); border-radius: 8px; background: rgba(0,0,0,0.4); }
+  #hud-toast { position: absolute; top: 84px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.75); padding: 10px 18px; border-radius: 8px; font-size: 15px; opacity: 0; transition: opacity 0.25s; max-width: 80%; text-align: center; }
+  #hud-toast.show { opacity: 1; }
+  #hud-banner { position: absolute; top: 38%; left: 50%; transform: translate(-50%, -50%) scale(0.9); font-size: 34px; font-weight: 900; color: #ffd800; text-shadow: 0 3px 10px #000; opacity: 0; transition: opacity 0.3s, transform 0.3s; text-align: center; }
+  #hud-banner.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(10, 8, 14, 0.82); z-index: 10; color: #fff; }
+  .panel { max-width: 560px; padding: 32px 40px; text-align: center; background: rgba(20, 16, 24, 0.9); border: 2px solid #c23a2a; border-radius: 14px; }
+  .panel h1 { margin: 0 0 6px; font-size: 46px; letter-spacing: 2px; color: #ffb36a; }
+  .panel h2 { margin: 0 0 14px; font-size: 16px; font-weight: 400; color: #ffd800; letter-spacing: 3px; }
+  .panel p { font-size: 15px; line-height: 1.55; color: #e8e0d0; }
+  .controls { text-align: left; font-size: 13.5px; line-height: 1.8; color: #cfc8b8; margin: 14px auto; display: inline-block; }
+  .btn { pointer-events: auto; cursor: pointer; display: inline-block; margin: 8px 6px 0; padding: 12px 26px; font-size: 16px; font-weight: 700; color: #fff; background: #c23a2a; border: none; border-radius: 8px; }
+  .btn.secondary { background: #3a5a7a; }
+  .btn:hover { filter: brightness(1.15); }
+  #busted-text { font-size: 22px; }
 </style>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.min.js" } }
 </script>
 </head>
 <body>
-<div id="game"></div>
-<div id="hud"></div>
+<canvas id="game-canvas"></canvas>
+<div id="hud">
+  <div id="hud-top-left">
+    <div id="hud-cash">$250</div>
+    <div id="hud-stars">☆☆☆☆☆</div>
+  </div>
+  <div id="hud-top-right">
+    <div id="hud-mission">FREE ROAM</div>
+    <div id="hud-objective">Press M to start your next mission</div>
+  </div>
+  <div id="hud-bottom-left">
+    <div id="hud-speed"></div>
+    <div id="hud-health"></div>
+    <div id="hud-radio">♪ BAYWAVE FM — Synthwave</div>
+    <div>WASD move/drive · E enter car · F punch · Shift sprint · P pause<br>M mission · T taxi fare · R radio · 1-4 stations · N mute</div>
+  </div>
+  <canvas id="minimap" width="180" height="180"></canvas>
+  <div id="hud-toast"></div>
+  <div id="hud-banner"></div>
+</div>
+<div id="menu" class="overlay">
+  <div class="panel">
+    <h1>SOLMAR BAY</h1>
+    <h2>AN OPEN-WORLD CRIME STORY</h2>
+    <p id="menu-story">Dani Reyes, getaway driver, is back in coastal Solmar Bay. The Coral Kings hold his sister Lila — and the price of her freedom is $2,600. Steal cars, outrun the law, run fares and jobs across the city, and bring her home.</p>
+    <div class="controls">
+      WASD — walk / drive &nbsp;·&nbsp; Mouse drag — camera<br>
+      Shift — sprint &nbsp;·&nbsp; E — enter / leave car &nbsp;·&nbsp; F — punch<br>
+      M — next mission &nbsp;·&nbsp; T — taxi fare (in the yellow taxi)<br>
+      R / 1-4 — radio stations &nbsp;·&nbsp; N — mute &nbsp;·&nbsp; P — pause
+    </div>
+    <br>
+    <button class="btn" id="btn-new">NEW GAME</button>
+    <button class="btn secondary" id="btn-continue">CONTINUE</button>
+  </div>
+</div>
+<div id="pause" class="overlay hidden">
+  <div class="panel">
+    <h1>PAUSED</h1>
+    <p>Solmar Bay waits for no one. Well — except now.</p>
+    <button class="btn" id="btn-resume">RESUME</button>
+  </div>
+</div>
+<div id="busted" class="overlay hidden">
+  <div class="panel">
+    <h1>BUSTED</h1>
+    <p id="busted-text">The Solmar Bay PD caught up with you.</p>
+    <button class="btn" id="btn-busted">BACK TO THE STREETS</button>
+  </div>
+</div>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

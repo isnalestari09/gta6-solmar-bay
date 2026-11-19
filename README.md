@@ -1,58 +1,53 @@
-# Solmar Bay — Make GTA 6 (gta6-01)
+# Solmar Bay — an open-world crime game
 
-[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![rank](https://make.fun/badge/gta6-01/isnalestari09/gta6-solmar-bay/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![reward](https://make.fun/badge/gta6-01/isnalestari09/gta6-solmar-bay/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+Dani Reyes, getaway driver, returns to coastal Solmar Bay to buy his sister
+Lila's freedom from the Coral Kings. The price: $2,600. Steal cars, outrun the
+Solmar Bay PD, run taxi fares, collect sunset coins and work through 8 story
+missions — ending in a five-star epilogue chase to the boat at the docks.
 
-An original open-world crime game for make.fun's **Make GTA 6** bounty
-($1,666, 100 places). Nothing in it is from Rockstar Games: the city,
-characters, vehicles, names, story, art, sound and music are all original.
+## Play
 
-Dani Reyes, getaway driver, comes home to coastal Solmar Bay to buy his
-sister Lila's freedom from the Coral Kings. Eight story missions pay
-$150–$2,600; the epilogue is a final escape chase to the north plaza.
+```sh
+node serve.ts
+# open http://localhost:8080
+```
 
-## What's in the game
-
-- A coastal city on a 5x5 road grid: buildings, two plazas with fountains,
-  a beach and sea, palm trees
-- On foot and by car: 28 stealable parked cars, 14 traffic cars, 26
-  pedestrians who wait at kerbs and cross at intersections
-- A 5-star wanted system with police cruisers that chase and ram; hiding
-  cools the heat three times faster
-- Combat (mouse to shoot, 60 ammo), 12 sunset coins (+$50 each), taxi
-  fares, a HUD with cash, health, speed, a live minimap and a mission
-  objective tracker
-- Four WebAudio radio stations (all sound is synthesised, no audio files)
-- Title / pause / dead / story-complete screens, localStorage autosave
-  (save v2, migrates v1), mission fail + retry that never takes earned cash
+No build step, no network: `game/` is plain static files, Three.js r160 is
+vendored under `game/vendor/`.
 
 ## Controls
 
-| Key | Action |
-| --- | --- |
-| WASD / arrows | Walk or drive |
-| Shift | Sprint on foot |
-| E | Steal / exit a car |
-| Mouse click | Shoot |
-| P / Esc | Pause |
-| N | Retry a failed mission |
-| R | Next radio station |
-| M | Mute |
-| Enter | Start / restart |
+- WASD — walk / drive, mouse drag — camera
+- Shift — sprint, E — enter / leave a car, F — punch
+- M — next mission, T — taxi fare (while driving the yellow taxi)
+- R or 1–4 — radio stations, N — mute, P — pause
 
-## Play it
+## Systems
 
-```sh
-node serve.ts        # http://localhost:8080
-```
+- Open city: road grid, two plazas, docks, 28 parked cars to steal, 14 traffic cars, 26 pedestrians
+- Five-star wanted system: police spawn around the player and chase; heat decays fast while hiding
+- 8 story missions ($150–$2,600), fail keeps your cash, retry is free
+- Taxi fares, 12 hidden sunset coins, 4 WebAudio-synth radio stations
+- HUD with objective tracker and live minimap, localStorage save v2
+- Camera shake, coin SFX, sirens, engine hum, pause and busted flow
 
-## Hand it in
+## Playtest
+
+Headless Chrome (CDP harness in `/tmp/solmar-playtest2.mjs`) drives the real
+game: page load, walking, car theft, driving, mission start, police spawn,
+coin pickup and save v2 — **14/14 checks pass with zero console errors**.
+The 4 screenshots in `screenshots/` are real gameplay captures at 1280×720.
+
+## Handing in
+
+`main.ts` (Node 22, standard library only) copies `game/` and `screenshots/`
+to the output directory and writes `dossier.json` with the kit's
+`buildDossier` from `vendor/makefun-game.ts`.
 
 ```sh
 mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 ```
 
-`main.ts` copies `game/` and `screenshots/` to the output directory and
-writes `dossier.json` with the vendored make.fun library. Static files
-only — the game makes no network request.
+## License
+
+MIT — see LICENSE.

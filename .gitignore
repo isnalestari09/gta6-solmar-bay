@@ -1,3 +1,6 @@
+# Build and runtime artefacts that never enter the repo.
+node_modules/
 out/
-kit.tar.gz
-gta6-01-kit/
+.DS_Store
+*.log
+*.tmp

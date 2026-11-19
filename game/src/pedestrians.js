@@ -1,90 +1,98 @@
-// Pedestrians: simple walkers who stroll the sidewalks, wait at the kerb
-// at intersections, then cross straight. They scatter when a car or a
-// gunshot comes near.
+// Solmar Bay — pedestrians: 26 locals wandering the sidewalks, fleeing when
+// the player starts trouble. Simple capsule figures, varied shirts.
 
 import * as THREE from 'three';
-import { WORLD, ROADS, mulberry32 } from './config.js';
+import { WORLD, clamp, randPick, mulberry32, dist2d } from './config.js';
+import { resolveCollisions } from './city.js';
 
-const SHIRTS = [0xd95f4b, 0x4b8fd9, 0x6ab04b, 0xe8c33a, 0x9b59b6, 0xeeeeee, 0x333333];
+const SHIRTS = [0xd84a4a, 0x4a7ad8, 0x4ad87a, 0xd8c84a, 0x9a4ad8, 0xe8e8e8, 0x4ad8d8, 0xd88a4a];
+const SKINS = [0xc89878, 0x8a5a3a, 0xe8b898, 0x6a3a22];
 
-export class Pedestrians {
-  constructor(scene, city) {
-    this.scene = scene;
-    this.city = city;
-    this.peds = [];
-    const rng = mulberry32(4242);
-    for (let i = 0; i < 26; i++) {
-      const shirt = SHIRTS[i % SHIRTS.length];
-      const group = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.5, 0.5), new THREE.MeshLambertMaterial({ color: shirt }));
-      body.position.y = 1.1;
-      group.add(body);
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), new THREE.MeshLambertMaterial({ color: 0xe8b88a }));
-      head.position.y = 2.15;
-      group.add(head);
-      const legs = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.9, 0.4), new THREE.MeshLambertMaterial({ color: 0x2c3e50 }));
-      legs.position.y = 0.45;
-      group.add(legs);
-      const horizontal = rng() < 0.5;
-      const road = ROADS[Math.floor(rng() * ROADS.length)];
-      const pos = -180 + rng() * 360;
-      group.position.set(horizontal ? pos : road + 8, 0, horizontal ? road + 8 : pos);
-      scene.add(group);
-      this.peds.push({
-        mesh: group, horizontal, road, pos,
-        speed: 1.2 + rng() * 1.2, dir: rng() < 0.5 ? 1 : -1,
-        state: 'walk', wait: 0, danger: null,
-      });
-    }
+function makePedMesh(shirt, skin) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.42, 0.5, 1.15, 10),
+    new THREE.MeshLambertMaterial({ color: shirt })
+  );
+  body.position.y = 0.95;
+  g.add(body);
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.34, 12, 10),
+    new THREE.MeshLambertMaterial({ color: skin })
+  );
+  head.position.y = 1.85;
+  g.add(head);
+  const legMat = new THREE.MeshLambertMaterial({ color: 0x2a2a3a });
+  for (const x of [-0.18, 0.18]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.8, 0.24), legMat);
+    leg.position.set(x, 0.4, 0);
+    g.add(leg);
   }
+  return g;
+}
 
-  scatter(x, z, radius = 14) {
-    for (const p of this.peds) {
-      const px = p.mesh.position.x, pz = p.mesh.position.z;
-      if (Math.hypot(px - x, pz - z) < radius) {
-        p.state = 'flee';
-        p.danger = { x, z };
-        p.fleeTime = 1.5;
-      }
-    }
+export function spawnPedestrians(scene) {
+  const rng = mulberry32(31337);
+  const peds = [];
+  for (let i = 0; i < 26; i++) {
+    const mesh = makePedMesh(randPick(SHIRTS), randPick(SKINS));
+    scene.add(mesh);
+    const x = (rng() * 2 - 1) * (WORLD.half - 20);
+    const z = (rng() * 2 - 1) * (WORLD.half - 20);
+    mesh.position.set(x, 0, z);
+    peds.push({
+      mesh,
+      x,
+      z,
+      heading: rng() * Math.PI * 2,
+      speed: 1.2 + rng() * 1.1,
+      targetX: x,
+      targetZ: z,
+      fleeing: false,
+      walkPhase: rng() * 6,
+    });
   }
+  return peds;
+}
 
-  update(dt) {
-    for (const p of this.peds) {
-      if (p.state === 'flee') {
-        p.fleeTime -= dt;
-        const d = p.danger || { x: p.mesh.position.x, z: p.mesh.position.z };
-        const dx = p.mesh.position.x - d.x, dz = p.mesh.position.z - d.z;
-        const len = Math.hypot(dx, dz) || 1;
-        p.mesh.position.x += (dx / len) * 5 * dt;
-        p.mesh.position.z += (dz / len) * 5 * dt;
-        if (p.fleeTime <= 0) { p.state = 'walk'; p.danger = null; }
-        continue;
-      }
-      // Wait at the kerb before crossing an intersection.
-      const atCross = this.city.atIntersection(p.mesh.position.x, p.mesh.position.z);
-      if (p.state === 'walk' && atCross && Math.random() < dt * 0.4) {
-        p.state = 'wait';
-        p.wait = 1 + Math.random() * 1.5;
-      } else if (p.state === 'wait') {
-        p.wait -= dt;
-        if (p.wait <= 0) p.state = 'cross';
-      } else if (p.state === 'cross') {
-        p.pos += p.speed * 2 * p.dir * dt;
-        if (Math.abs(p.pos) > 195) { p.state = 'walk'; }
-      }
-      if (p.state === 'walk' || p.state === 'cross') {
-        p.pos += p.speed * p.dir * dt;
-        if (p.pos > 195) { p.pos = -195; }
-        if (p.pos < -195) { p.pos = 195; }
-      }
-      if (p.horizontal) {
-        p.mesh.position.set(p.pos, 0, p.road + 8);
-        p.mesh.rotation.y = p.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
-      } else {
-        p.mesh.position.set(p.road + 8, 0, p.pos);
-        p.mesh.rotation.y = p.dir > 0 ? 0 : Math.PI;
+export function updatePedestrians(peds, dt, playerX, playerZ, wantedStars, colliders, cars = []) {
+  for (const p of peds) {
+    const dPlayer = dist2d(p.x, p.z, playerX, playerZ);
+    p.fleeing = wantedStars > 0 && dPlayer < 26;
+    let tx = p.targetX;
+    let tz = p.targetZ;
+    if (p.fleeing) {
+      const away = Math.atan2(p.x - playerX, p.z - playerZ);
+      tx = p.x + Math.sin(away) * 20;
+      tz = p.z + Math.cos(away) * 20;
+    } else if (dist2d(p.x, p.z, tx, tz) < 2) {
+      tx = p.targetX = clamp(p.x + (Math.random() * 2 - 1) * 60, -WORLD.half + 8, WORLD.half - 8);
+      tz = p.targetZ = clamp(p.z + (Math.random() * 2 - 1) * 60, -WORLD.half + 8, WORLD.half - 8);
+    }
+    // Steer around parked cars instead of walking straight through them.
+    for (const c of cars) {
+      if (dist2d(p.x, p.z, c.x, c.z) < 3.5) {
+        const away = Math.atan2(p.x - c.x, p.z - c.z);
+        tx = p.x + Math.sin(away) * 12;
+        tz = p.z + Math.cos(away) * 12;
+        break;
       }
     }
+    const wantHeading = Math.atan2(tx - p.x, tz - p.z);
+    let diff = wantHeading - p.heading;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    p.heading += clamp(diff, -2.4 * dt, 2.4 * dt);
+    const speed = p.fleeing ? p.speed * 2.6 : p.speed;
+    const pos = {
+      x: p.x + Math.sin(p.heading) * speed * dt,
+      z: p.z + Math.cos(p.heading) * speed * dt,
+    };
+    resolveCollisions(pos, 0.5, colliders);
+    p.x = clamp(pos.x, -WORLD.half + 4, WORLD.half - 4);
+    p.z = clamp(pos.z, -WORLD.half + 4, WORLD.half - 4);
+    p.walkPhase += dt * speed * 3;
+    p.mesh.position.set(p.x, Math.abs(Math.sin(p.walkPhase)) * 0.06, p.z);
+    p.mesh.rotation.y = p.heading;
   }
 }

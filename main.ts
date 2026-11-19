@@ -1,38 +1,51 @@
-// Solmar Bay — the entry program for make.fun gta6-01 (Node 22, stdlib
-// only). The game is the static files under game/: a Three.js open-world
-// crime game that runs offline in a desktop browser. This program copies
-// game/ and screenshots/ into the output directory and writes
-// dossier.json with the vendored make.fun library, exactly as the kit's
-// starter does. Outside the grader, MAKEFUN_OUTPUT_DIR stands in for
-// /output:
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// Solmar Bay — the entry program for make.fun's Make GTA 6 (gta6-01).
+// Node 22, standard library only. Copies game/ and screenshots/ from this
+// repository into the output directory and writes dossier.json with the kit's
+// buildDossier from vendor/makefun-game.ts, exactly as the scorer rebuilds it.
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const here = fileURLToPath(new URL('.', import.meta.url));
-const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const repoRoot = dirname(fileURLToPath(import.meta.url));
+const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-// Everything the judge needs lives in two folders beside this file:
-// game/ (the playable static game) and screenshots/ (3 or 4 real renders
-// of the game running in a browser, first by name is the cover).
-mkdirSync(out, { recursive: true });
-cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
-mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots'))) {
-  cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+function copyTree(src, dest) {
+  mkdirSync(dest, { recursive: true });
+  cpSync(src, dest, { recursive: true });
 }
 
-// The scorer's own caps (from the kit's gate): at most 4 screenshots of
-// at most 256 KiB, at most 993 files and 48 MiB in game/, and no game path
-// over 1000 bytes. buildDossier refuses an entry the scorer would refuse.
-const dossier = buildDossier(out, {
+const gameSrc = join(repoRoot, 'game');
+const shotsSrc = join(repoRoot, 'screenshots');
+if (!existsSync(gameSrc)) throw new Error('main.ts: game/ is missing from the repository');
+if (!existsSync(shotsSrc)) throw new Error('main.ts: screenshots/ is missing from the repository');
+
+rmSync(outDir, { recursive: true, force: true });
+mkdirSync(outDir, { recursive: true });
+copyTree(gameSrc, join(outDir, 'game'));
+copyTree(shotsSrc, join(outDir, 'screenshots'));
+
+const dossier = buildDossier(outDir, {
   text_max_bytes: 163840,
   screenshots: { max: 4, max_bytes: 262144 },
   game_max_files: 993,
   game_max_bytes: 50331648,
   game_path_max_bytes: 1000,
 });
-writeFileSync(join(out, 'dossier.json'), dossier);
+writeFileSync(join(outDir, 'dossier.json'), dossier);
+
+// Report the dossier fingerprint and file counts, so two runs can be
+// compared byte-for-byte and the scorer's rebuild can be sanity-checked.
+function countFiles(dir) {
+  let n = 0;
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    n += e.isDirectory() ? countFiles(join(dir, e.name)) : 1;
+  }
+  return n;
+}
+const hash = createHash('sha256').update(dossier).digest('hex');
+console.log(`Solmar Bay dossier written: ${dossier.length} bytes to ${outDir}/dossier.json`);
+console.log(`dossier sha256: ${hash}`);
+console.log(`game files: ${countFiles(join(outDir, 'game'))}, screenshots: ${countFiles(join(outDir, 'screenshots'))}`);

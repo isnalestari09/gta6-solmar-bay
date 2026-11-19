@@ -1,55 +1,52 @@
-// A tiny static server for game/ (Node 22, standard library only), so
-// the entry can be played locally without a build step:
-//   node serve.ts            serves game/ on http://localhost:8080
-//   node serve.ts --port 8091
-// It sends the MIME types a browser game needs, refuses any path outside
-// game/, and otherwise does nothing clever: a development convenience,
-// not a web server for the internet.
+// Solmar Bay — tiny static file server for local playtesting.
+// Serves game/ at http://localhost:8080. Node standard library only.
 
-import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { extname, join, normalize, resolve, sep } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = resolve(fileURLToPath(new URL('./game', import.meta.url)));
-const args = process.argv.slice(2);
-const portIndex = args.indexOf('--port');
-const requested = portIndex === -1 ? 8080 : Number(args[portIndex + 1]);
-const port = Number.isInteger(requested) && requested > 0 && requested < 65536 ? requested : 8080;
+const root = join(fileURLToPath(new URL('.', import.meta.url)), 'game');
+const port = Number(process.env.PORT ?? 8080);
 
-const MIME = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
+const TYPES = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.mjs': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
 };
 
-const server = createServer((req, res) => {
-  const urlPath = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
-  const rel = normalize(urlPath).replace(/^[/\\]+/, '');
-  const file = join(root, rel);
-  if (!file.startsWith(root + sep) && file !== root) {
-    res.writeHead(403); res.end('forbidden'); return;
-  }
-  let path = file;
+const server = createServer(async (req, res) => {
   try {
-    if (statSync(path).isDirectory()) path = join(path, 'index.html');
-  } catch { /* fall through to the 404 below */ }
-  try {
-    const stat = statSync(path);
-    res.writeHead(200, { 'content-type': MIME[extname(path)] || 'application/octet-stream', 'content-length': stat.size });
-    createReadStream(path).pipe(res);
+    const url = new URL(req.url ?? '/', 'http://localhost');
+    let path = decodeURIComponent(url.pathname);
+    if (path === '/') path = '/index.html';
+    // Browsers ask for a favicon on every load; answer empty instead of
+    // logging a 404 for it.
+    if (path === '/favicon.ico') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    const file = normalize(join(root, path));
+    if (!file.startsWith(root)) {
+      res.writeHead(403);
+      res.end('forbidden');
+      return;
+    }
+    const data = await readFile(file);
+    res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream' });
+    res.end(data);
   } catch {
-    res.writeHead(404); res.end('not found');
+    res.writeHead(404);
+    res.end('not found');
   }
 });
 
-server.listen(port, () => console.log(`Solmar Bay on http://localhost:${port}`));
+server.listen(port, () => {
+  console.log(`Solmar Bay serving game/ at http://localhost:${port}`);
+});

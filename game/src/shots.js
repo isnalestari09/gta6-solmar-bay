@@ -1,64 +1,98 @@
-// Staged screenshot modes, driven by ?shot=...&seed=1. Each mode places
-// Dani, a car and the camera so the first rendered frame already frames
-// the subject, and (for driving shots) auto-drives so the car does not
-// coast to a stop under slow software rendering.
+// Solmar Bay — staged shots for screenshots and the debug hooks the playtest
+// harness uses. URL ?shot=N stages a view; window.__solmar exposes game state.
 
-import { MISSIONS } from './config.js';
+import { dist2d } from './config.js';
 
-export const SHOTS = {
-  start: { label: 'Title screen at the south plaza' },
-  play: { label: 'Driving down the main road' },
-  chase: { label: 'Three-star police chase' },
-  mission: { label: 'Dani at the Coral Kings compound' },
-  plaza: { label: 'The north plaza, mission 8 beacon' },
-};
+export const SHOTS = [
+  { name: '1-start', label: 'Plaza del Sol at sunset, Dani on foot', cam: [118, 26, 128], look: [92, 2, 92], state: 'menu' },
+  { name: '2-play', label: 'Driving the boulevard in a stolen sedan', cam: [30, 12, -40], look: [0, 2, 10], state: 'drive' },
+  { name: '3-chase', label: 'Three-star police chase at Coral Plaza', cam: [-60, 22, -60], look: [-92, 2, -92], state: 'chase' },
+  // Mission shot: chase camera behind Dani as he runs for the boat, so the
+  // player, the docks and the escape boat are all in frame.
+  { name: '4-mission', label: 'Mission marker at the docks', cam: [0, 7, 146], look: [0, 2, 200], state: 'mission' },
+];
 
-export function applyShot(game, name) {
-  const g = game;
-  if (name === 'start') {
-    g.player.reset(-120, -100);
-    g.player.angle = Math.PI;
-    g.cameraMode = 'title';
-    return;
+export function stageShot(game, n) {
+  const shot = SHOTS[n];
+  if (!shot) return null;
+  game.shotName = shot.name;
+  game.hideMenuForShot();
+  if (shot.state === 'drive') {
+    const car = game.parked[0];
+    game.player.enterCar(car);
+    car.x = 0;
+    car.z = -20;
+    car.heading = 0;
+    car.speed = 22;
+    game.camYaw = Math.PI;
+  } else if (shot.state === 'chase') {
+    game.player.teleport(-92, -70, 0);
+    game.wanted.heat = 300;
+    game.wanted.stars = 3;
+    const car = game.parked[1];
+    game.player.enterCar(car);
+    car.x = -92;
+    car.z = -70;
+    car.heading = 0.6;
+    car.speed = 20;
+  } else if (shot.state === 'mission') {
+    game.player.teleport(0, 160, Math.PI);
+    game.missions.start(7, game);
+  } else {
+    game.player.teleport(92, 70, Math.PI);
   }
-  if (name === 'play') {
-    g.player.reset(0, 60);
-    const car = g.vehicles.parked[0];
-    if (car) { g.player.x = car.x; g.player.z = car.z; g.player.enterCar(car); g.player.carSpeed = 30; g.autoDrive = true; }
-    g.player.angle = Math.PI;
-    g.cameraMode = 'chase';
-    return;
-  }
-  if (name === 'chase') {
-    g.player.reset(0, 40);
-    const car = g.vehicles.parked[1] || g.vehicles.parked[0];
-    if (car) { g.player.x = car.x; g.player.z = car.z; g.player.enterCar(car); g.player.carSpeed = 28; g.autoDrive = true; }
-    g.wanted.addCrime(55, 'chase');
-    g.wanted.addCrime(10, 'chase');
-    // Stage one cruiser ahead on the road so the chase reads in the frame.
-    g.vehicles.spawnPolice(g.player.x + 30, g.player.z + 10);
-    g.cameraMode = 'chase';
-    return;
-  }
-  if (name === 'mission') {
-    g.missions.index = 6;
-    g.missions._placeBeacon();
-    // Stand on road x=80, south of the beacon at (80,80), facing north:
-    // the road is clear of buildings, so the camera sees the beacon.
-    g.player.reset(80, 62);
-    g.player.angle = 0;
-    g.cameraMode = 'chase';
-    return;
-  }
-  if (name === 'plaza') {
-    g.missions.index = 7;
-    g.missions._placeBeacon();
-    g.player.reset(120, 100);
-    g.player.angle = Math.PI;
-    g.cameraMode = 'orbit';
-    return;
-  }
-  g.player.reset(0, -20);
+  game.shotCamera = { pos: shot.cam, look: shot.look };
+  return shot;
 }
 
-export function shotList() { return Object.keys(SHOTS); }
+export function installDebugHooks(game) {
+  window.__solmar = {
+    game,
+    version: 'solmar-bay-3',
+    get state() {
+      return {
+        cash: game.cash,
+        missionsDone: game.missionsDone,
+        missionActive: game.missions.active,
+        missionIndex: game.missions.index,
+        missionStep: game.missions.step,
+        wanted: game.wanted.stars,
+        heat: Math.round(game.wanted.heat),
+        coins: game.coinsCollected,
+        fares: game.faresDone,
+        inCar: !!game.player.inCar,
+        px: Math.round(game.player.x),
+        pz: Math.round(game.player.z),
+        shot: game.shotName ?? null,
+        errors: game.errors.slice(),
+      };
+    },
+    teleport(x, z) {
+      game.player.teleport(x, z, 0);
+    },
+    startMission(i) {
+      game.missions.start(i, game);
+    },
+    setWanted(n) {
+      game.wanted.heat = n * 100;
+      game.wanted.stars = n;
+    },
+    giveCash(n) {
+      game.cash += n;
+    },
+    shot(n) {
+      return stageShot(game, n);
+    },
+  };
+  const params = new URLSearchParams(location.search);
+  const shot = params.get('shot');
+  if (shot !== null) {
+    const n = parseInt(shot, 10);
+    if (!Number.isNaN(n)) {
+      game.pendingShot = n;
+    }
+  }
+  window.addEventListener('error', (e) => {
+    game.errors.push(String(e.message || e.error || 'error'));
+  });
+}

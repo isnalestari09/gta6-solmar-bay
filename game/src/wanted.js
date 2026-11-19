@@ -1,56 +1,91 @@
-// Wanted level: 0 to 5 stars. Crimes raise it, hiding lowers it.
-// Police cruisers spawn as the level rises and despawn as it falls.
+// Solmar Bay — the five-star wanted system. Heat rises with crime, police spawn
+// around the player and chase, and heat decays fast while the player hides.
+
+import { WANTED, clamp, rand } from './config.js';
+import { makePoliceCar, updatePoliceCar } from './vehicles.js';
 
 export class Wanted {
-  constructor(vehicles, audio) {
-    this.vehicles = vehicles;
-    this.audio = audio;
+  constructor(scene, colliders) {
+    this.scene = scene;
+    this.colliders = colliders;
     this.stars = 0;
-    this.heat = 0; // 0..100, drives star changes
+    this.heat = 0;
+    this.police = [];
+    this.bustTimer = 0;
     this.hiding = false;
-    this.lastPos = { x: 0, z: 0 }; // last known player position
+    this.engaged = false; // true once a cop has actually closed in on Dani
+    this.spawnTimer = 0;
   }
 
-  addCrime(amount, reason) {
-    this.heat = Math.min(100, this.heat + amount);
-    this._syncStars();
-    if (this.audio) this.audio.siren();
-    return reason;
-  }
-
-  _syncStars() {
-    const want = this.heat <= 0 ? 0 : this.heat < 20 ? 1 : this.heat < 40 ? 2 : this.heat < 60 ? 3 : this.heat < 80 ? 4 : 5;
-    if (want > this.stars) {
-      for (let i = this.stars; i < want; i++) {
-        // Cruisers spawn on the roads around the player, not at the origin.
-        const a = Math.random() * Math.PI * 2;
-        this.vehicles.spawnPolice(this.lastPos.x + Math.cos(a) * 55, this.lastPos.z + Math.sin(a) * 55);
-      }
-    } else if (want < this.stars) {
-      while (this.vehicles.police.length > want) {
-        this.vehicles.removePolice(this.vehicles.police[this.vehicles.police.length - 1]);
-      }
-    }
-    this.stars = want;
-  }
-
-  update(dt, playerPos) {
-    this.lastPos = { x: playerPos.x, z: playerPos.z };
-    // Hiding: no police car within 45 m cools the heat three times faster.
-    let nearest = Infinity;
-    for (const cop of this.vehicles.police) {
-      nearest = Math.min(nearest, Math.hypot(cop.x - playerPos.x, cop.z - playerPos.z));
-    }
-    this.hiding = this.stars > 0 && nearest > 45;
-    const cool = this.hiding ? 7.5 : 2.5;
-    if (this.heat > 0) {
-      this.heat = Math.max(0, this.heat - cool * dt);
-      this._syncStars();
-    }
+  addHeat(amount) {
+    this.heat = clamp(this.heat + amount, 0, WANTED.maxStars * WANTED.heatPerStar);
+    const stars = Math.min(WANTED.maxStars, Math.floor(this.heat / WANTED.heatPerStar) + (this.heat > 0 ? 1 : 0));
+    this.stars = this.heat <= 0 ? 0 : stars;
   }
 
   clear() {
+    this.stars = 0;
     this.heat = 0;
-    this._syncStars();
+    this.bustTimer = 0;
+    this.engaged = false;
+    for (const p of this.police) this.scene.remove(p.mesh);
+    this.police = [];
+  }
+
+  update(dt, player, cars, opts = {}) {
+    // Hiding: a cop has closed in on Dani at least once, and now none is
+    // close. Police that are still driving in from their spawn point do
+    // not count — the wanted level cannot clear itself before the first
+    // patrol car ever arrives.
+    const nearestPolice = this.police.reduce(
+      (m, p) => Math.min(m, Math.hypot(p.x - player.x, p.z - player.z)),
+      Infinity
+    );
+    if (nearestPolice < 30) this.engaged = true;
+    this.hiding = this.engaged && nearestPolice > 45;
+    // holdHeat (the mission-8 epilogue chase) freezes the wanted level:
+    // a scripted five-star chase must not evaporate while Dani runs for
+    // the boat.
+    const decay = opts.holdHeat
+      ? 0
+      : (this.hiding ? WANTED.decayHiding : WANTED.decayNormal) * WANTED.heatPerStar * dt;
+    if (this.heat > 0) {
+      this.heat = Math.max(0, this.heat - decay);
+      this.stars = this.heat <= 0 ? 0 : Math.min(WANTED.maxStars, Math.floor(this.heat / WANTED.heatPerStar) + 1);
+    }
+    const wantPolice = this.stars > 0 ? Math.min(6, this.stars + WANTED.policePerStar) : 0;
+    this.spawnTimer -= dt;
+    if (this.police.length < wantPolice && this.spawnTimer <= 0) {
+      this.spawnTimer = 1.2;
+      const a = rand(0, Math.PI * 2);
+      const r = rand(WANTED.spawnRadiusMin, WANTED.spawnRadiusMax);
+      const x = clamp(player.x + Math.sin(a) * r, -200, 200);
+      const z = clamp(player.z + Math.cos(a) * r, -200, 200);
+      this.police.push(makePoliceCar(this.scene, x, z));
+    }
+    if (this.police.length > wantPolice) {
+      const extra = this.police.pop();
+      this.scene.remove(extra.mesh);
+    }
+    // Police chase and ram. On foot, a touch starts the bust clock, and the
+    // clock resets the moment no cop is touching Dani, so a near-miss does
+    // not carry over into the next encounter.
+    let busted = false;
+    let touching = false;
+    for (const p of this.police) {
+      const { dist } = updatePoliceCar(p, player.x, player.z, dt, this.colliders);
+      if (!player.inCar && dist < 2.6) touching = true;
+      if (player.inCar && dist < 3.4) {
+        player.inCar.health -= 14 * dt;
+        if (player.inCar.health <= 0) busted = true;
+      }
+    }
+    if (touching) {
+      this.bustTimer += dt;
+      if (this.bustTimer > WANTED.bustTouchSeconds) busted = true;
+    } else {
+      this.bustTimer = 0;
+    }
+    return { busted, nearestPolice };
   }
 }
